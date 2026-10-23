@@ -539,11 +539,12 @@
             isIpValid: true,
             lat: null,
             lng: null,
+            accuracy: null,
             distance: null,
             isGpsValid: false
         };
 
-        let map, userMarker, hqCircle;
+        let map, userMarker, userAccuracyCircle, hqCircle;
 
         // --- INIT ON LOAD ---
         window.onload = function() {
@@ -656,46 +657,71 @@
                     pos => {
                         userState.lat = pos.coords.latitude;
                         userState.lng = pos.coords.longitude;
+                        userState.accuracy = pos.coords.accuracy;
                         calculateGpsCompliance();
                     },
-                    err => {
-                        // Demo fallback proximity
-                        userState.lat = appConfig.hqLat + 0.0012;
-                        userState.lng = appConfig.hqLng + 0.0012;
-                        calculateGpsCompliance();
+                    () => {
+                        userState.lat = null;
+                        userState.lng = null;
+                        userState.accuracy = null;
+                        userState.distance = null;
+                        userState.isGpsValid = false;
+                        document.getElementById('hqDistanceLabel').innerText = 'Allow location access to show your position.';
+                        document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
                     },
                     { enableHighAccuracy: true, timeout: 5000 }
                 );
             } else {
-                userState.lat = appConfig.hqLat + 0.0012;
-                userState.lng = appConfig.hqLng + 0.0012;
-                calculateGpsCompliance();
+                userState.lat = null;
+                userState.lng = null;
+                userState.accuracy = null;
+                userState.distance = null;
+                userState.isGpsValid = false;
+                document.getElementById('hqDistanceLabel').innerText = 'Location is unavailable on this device.';
+                document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
             }
         }
 
         function calculateGpsCompliance() {
-            if (!userState.lat || !userState.lng) return;
+            if (userState.lat === null || userState.lng === null) return;
 
             const dist = getDistanceMeters(userState.lat, userState.lng, appConfig.hqLat, appConfig.hqLng);
             userState.distance = Math.round(dist);
-            userState.isGpsValid = userState.distance <= appConfig.allowedRadiusMeters;
+            const accuracy = Math.max(0, Number(userState.accuracy) || 0);
+            const definitelyInside = dist + accuracy <= appConfig.allowedRadiusMeters;
+            const definitelyOutside = dist - accuracy > appConfig.allowedRadiusMeters;
+            userState.isGpsValid = definitelyInside;
 
             // UI updates
-            document.getElementById('hqDistanceLabel').innerText = `Distance to Corporate HQ: ${userState.distance} meters`;
+            document.getElementById('hqDistanceLabel').innerText = `Estimated distance to HQ: ${userState.distance}m (accuracy ±${Math.round(accuracy)}m)`;
             const badge = document.getElementById('kioskGpsBadge');
-            if (userState.isGpsValid) {
+            if (accuracy > 1000) {
+                badge.innerText = `Low accuracy (±${Math.round(accuracy)}m)`;
+                badge.className = "text-xs font-bold text-amber-300";
+            } else if (definitelyInside) {
                 badge.innerText = `Inside (${userState.distance}m)`;
                 badge.className = "text-xs font-bold text-emerald-400";
-            } else {
+            } else if (definitelyOutside) {
                 badge.innerText = `Out of Bounds (${userState.distance}m)`;
                 badge.className = "text-xs font-bold text-rose-400";
+            } else {
+                badge.innerText = `Uncertain (${userState.distance}m)`;
+                badge.className = "text-xs font-bold text-amber-300";
             }
 
             if (userMarker) map.removeLayer(userMarker);
+            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             userMarker = L.marker([userState.lat, userState.lng]).addTo(map)
-                .bindPopup(`<b>Your Position</b><br>Distance to HQ: ${userState.distance}m`).openPopup();
+                .bindPopup(`<b>Estimated Position</b><br>Distance to HQ: ${userState.distance}m<br>Accuracy: ±${Math.round(accuracy)}m`).openPopup();
+            userAccuracyCircle = L.circle([userState.lat, userState.lng], {
+                color: '#3b82f6',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.12,
+                weight: 1,
+                radius: accuracy
+            }).addTo(map);
 
-            const group = new L.featureGroup([userMarker, hqCircle]);
+            const group = new L.featureGroup([userAccuracyCircle, hqCircle]);
             map.fitBounds(group.getBounds().pad(0.2));
         }
 

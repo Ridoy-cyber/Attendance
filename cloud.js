@@ -279,8 +279,11 @@
         if (!navigator.geolocation) {
             userState.lat = null;
             userState.lng = null;
+            userState.accuracy = null;
             userState.distance = null;
             userState.isGpsValid = false;
+            if (userMarker) map.removeLayer(userMarker);
+            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             document.getElementById('hqDistanceLabel').innerText = 'Location is unavailable on this device.';
             document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
             return;
@@ -289,12 +292,16 @@
         navigator.geolocation.getCurrentPosition(position => {
             userState.lat = position.coords.latitude;
             userState.lng = position.coords.longitude;
+            userState.accuracy = position.coords.accuracy;
             calculateGpsCompliance();
         }, () => {
             userState.lat = null;
             userState.lng = null;
+            userState.accuracy = null;
             userState.distance = null;
             userState.isGpsValid = false;
+            if (userMarker) map.removeLayer(userMarker);
+            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             document.getElementById('hqDistanceLabel').innerText = 'Allow location access to record your position.';
             document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
         }, { enableHighAccuracy: true, timeout: 10000 });
