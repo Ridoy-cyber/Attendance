@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Attendance & Location Verification System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet CSS & JS for OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        #map { height: 280px; width: 100%; border-radius: 0.75rem; z-index: 1; }
+        .admin-nav.active {
+            background-color: #0284c7;
+            color: #ffffff;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="h-full text-slate-800 flex flex-col font-sans antialiased">
+
+    <!-- Top Global Header Nav -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- System Logo -->
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 bg-brand-600 rounded-xl text-white shadow-md">
+                        <i class="fa-solid fa-shield-halved text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-tight tracking-wide">GeoGuard Attendance</h1>
+                        <p class="text-xs text-slate-400">Attendance demo · Local device storage</p>
+                    </div>
+                </div>
+
+                <!-- View Mode Switcher Header Controls -->
+                <div class="flex items-center space-x-3">
+                    <span id="systemClock" class="text-xs font-mono bg-slate-800 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-lg hidden md:inline-block">
+                        --:--:--
+                    </span>
+
+                    <div class="bg-slate-800 p-1 rounded-xl border border-slate-700 flex items-center space-x-1">
+                        <button id="navBtnKiosk" onclick="switchMainPortal('kiosk')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 bg-brand-600 text-white shadow">
+                            <i class="fa-solid fa-user-check"></i>
+                            <span>Employee Kiosk</span>
+                        </button>
+                        <button id="navBtnAdmin" onclick="switchMainPortal('admin')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:text-white hover:bg-slate-700 flex items-center space-x-1.5">
+                            <i class="fa-solid fa-lock"></i>
+                            <span>Admin Portal</span>
+                        </button>
+                    </div>
+                    <button id="signOutBtn" onclick="signOutUser()" type="button" title="Sign out" class="hidden px-2.5 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700" aria-label="Sign out">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Global Toast Alert Container -->
+    <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center space-x-3 border border-slate-700 transition-all duration-300">
+        <i id="toastIcon" class="fa-solid fa-circle-info text-brand-400 text-xl"></i>
+        <span id="toastMessage" class="text-xs sm:text-sm font-medium">Notification message</span>
+    </div>
+
+    <!-- MAIN VIEW CONTAINER 1: EMPLOYEE KIOSK VIEW -->
+    <main id="viewKiosk" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        
+        <!-- Welcome Banner -->
+        <div class="bg-gradient-to-r from-brand-900 via-brand-800 to-slate-900 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="space-y-1">
+                <div class="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-brand-500/20 border border-brand-400/30 text-brand-200 text-xs font-medium">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Self-Service Check-In Portal</span>
+                </div>
+                <h2 class="text-2xl font-black tracking-tight">Employee Attendance Terminal</h2>
+                <p class="text-xs text-brand-100 max-w-xl">Sign in with your employee account to record attendance and location.</p>
+            </div>
+            
+            <!-- Quick Status Summary -->
+            <div class="flex items-center gap-3">
+                <div class="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-center">
+                    <span class="block text-[10px] uppercase font-bold text-brand-200">Network IP</span>
+                    <span id="kioskIpBadge" class="text-xs font-bold text-white">Checking...</span>
+                </div>
+                <div class="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-center">
+                    <span class="block text-[10px] uppercase font-bold text-brand-200">Geofence</span>
+                    <span id="kioskGpsBadge" class="text-xs font-bold text-white">Pending</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Form Section -->
+            <div class="lg:col-span-6 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-5">
+                <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
+                    <h3 class="text-base font-bold text-slate-900">Mark Presence</h3>
+                    <span class="text-xs text-slate-500"><i class="fa-solid fa-clock text-brand-600 mr-1"></i> Real-time Verification</span>
+                </div>
+
+                <form id="attendanceForm" onsubmit="submitCheckIn(event)" class="space-y-4">
+                    <!-- Quick Search / Dropdown -->
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            Select Employee <span class="text-rose-500">*</span>
+                        </label>
+                        <select id="empSelect" onchange="autoFillCheckIn(this.value)" required class="w-full rounded-xl border-slate-300 bg-slate-50 text-sm focus:ring-brand-500 focus:border-brand-500 p-3 border font-medium">
+                            <option value="">-- Choose Registered Employee --</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Employee ID</label>
+                            <input type="text" id="empId" readonly placeholder="Auto-filled" class="w-full rounded-xl border-slate-200 bg-slate-100 text-sm p-2.5 border font-mono font-semibold text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Department</label>
+                            <input type="text" id="empDept" readonly placeholder="Auto-filled" class="w-full rounded-xl border-slate-200 bg-slate-100 text-sm p-2.5 border font-semibold text-slate-600">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Entry Type</label>
+                            <select id="checkinType" class="w-full rounded-xl border-slate-300 bg-white text-sm focus:ring-brand-500 p-2.5 border font-medium">
+                                <option value="Clock In">Clock In (Shift Start)</option>
+                                <option value="Clock Out">Clock Out (Shift End)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Reported Public IP</label>
+                            <input type="text" id="displayIp" readonly class="w-full rounded-xl border-slate-200 bg-slate-100 text-sm p-2.5 border font-mono text-slate-600">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Work Note / Reason (Optional)</label>
+                        <textarea id="checkinNote" rows="2" placeholder="e.g. Arrived on-site for morning sync..." class="w-full rounded-xl border-slate-300 text-sm p-2.5 border focus:ring-brand-500"></textarea>
+                    </div>
+
+                    <!-- Submission Gate Warning Banner if IP Blocked -->
+                    <div id="ipGateWarning" class="hidden p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start space-x-2.5">
+                        <i class="fa-solid fa-triangle-exclamation text-rose-600 text-base mt-0.5"></i>
+                        <div>
+                            <span class="font-bold">IP notice:</span> This address is outside the configured list. Browser-side IP matching is informational only.
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="w-full py-3.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg hover:shadow-brand-500/25 transition-all duration-200 flex items-center justify-center space-x-2 text-sm">
+                        <i class="fa-solid fa-fingerprint text-lg"></i>
+                        <span>Confirm Attendance Entry</span>
+                    </button>
+                    <p class="text-[11px] text-slate-500">Submitting records your entry, device location, and reported public IP for authorized administrators to review.</p>
+                </form>
+            </div>
+
+            <!-- Map & Geo Radar Panel -->
+            <div class="lg:col-span-6 space-y-4">
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900">Geofence Radar</h3>
+                            <p class="text-xs text-slate-500" id="hqDistanceLabel">Calculating HQ Proximity...</p>
+                        </div>
+                        <button onclick="requestGeolocation()" type="button" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 transition-colors flex items-center space-x-1.5">
+                            <i class="fa-solid fa-location-crosshairs text-brand-600"></i>
+                            <span>Refetch Location</span>
+                        </button>
+                    </div>
+
+                    <div id="map" class="shadow-inner border border-slate-200"></div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                        <div class="flex items-center space-x-2 text-slate-600">
+                            <span class="w-3 h-3 rounded-full bg-blue-500 inline-block border border-white shadow-sm"></span>
+                            <span>Your Location</span>
+                        </div>
+                        <div class="flex items-center space-x-2 text-slate-600">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white shadow-sm"></span>
+                            <span>HQ Geofence Zone</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-200 rounded-2xl p-4 shadow-md border border-slate-800">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
+                            <i class="fa-solid fa-flask text-base"></i>
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            <div>
+                                <h4 class="text-xs font-bold text-white uppercase tracking-wider">Network Testing Sandbox</h4>
+                                <p class="text-[11px] text-slate-400">Simulate connecting from inside vs outside the corporate network.</p>
+                            </div>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="simIpToggle" onchange="toggleSimulatedIp(this.checked)" checked class="sr-only peer">
+                                <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-600"></div>
+                                <span class="ml-2 text-xs font-semibold text-slate-300">Simulate Allowed Corporate IP</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- MAIN VIEW CONTAINER 2: ADMIN PORTAL (PROTECTED FULL PAGE) -->
+    <main id="viewAdmin" class="hidden flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Admin Top Navigation & Header Bar -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-brand-50 text-brand-700 rounded-xl border border-brand-200">
+                    <i class="fa-solid fa-user-shield text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">Admin Control Center</h2>
+                    <p class="text-xs text-slate-500">Manage directory, monitor logs, and configure security rules</p>
+                </div>
+            </div>
+
+            <!-- Sub Tab Switcher Button Row -->
+            <nav class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto space-x-1">
+                <button id="adminTabBtn-directory" onclick="switchAdminSubTab('directory')" class="admin-nav active px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 whitespace-nowrap">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Employee Directory</span>
+                </button>
+                <button id="adminTabBtn-logs" onclick="switchAdminSubTab('logs')" class="admin-nav text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 whitespace-nowrap">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>Attendance Logs</span>
+                </button>
+                <button id="adminTabBtn-settings" onclick="switchAdminSubTab('settings')" class="admin-nav text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 whitespace-nowrap">
+                    <i class="fa-solid fa-gears"></i>
+                    <span>System Settings</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- ADMIN SUB-TAB 1: EMPLOYEE DIRECTORY -->
+        <section id="adminSub-directory" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Add/Edit Employee Form -->
+                <div class="lg:col-span-4 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
+                        <h3 id="directoryFormTitle" class="text-base font-bold text-slate-900">Add New Employee</h3>
+                        <button id="cancelEditBtn" onclick="resetDirectoryForm()" class="hidden text-xs text-rose-600 font-bold hover:underline">Cancel</button>
+                    </div>
+
+                    <form id="directoryForm" onsubmit="saveEmployeeRecord(event)" class="space-y-3">
+                        <input type="hidden" id="directoryEditIndex" value="-1">
+
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Employee ID <span class="text-rose-500">*</span></label>
+                            <input type="text" id="dirEmpId" required placeholder="EMP-1001" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border focus:ring-brand-500 font-mono">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Full Name <span class="text-rose-500">*</span></label>
+                            <input type="text" id="dirEmpName" required placeholder="John Doe" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border focus:ring-brand-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Department</label>
+                            <input type="text" id="dirEmpDept" placeholder="Engineering / HR" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border focus:ring-brand-500">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Type</label>
+                                <select id="dirEmpType" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border">
+                                    <option value="Full-Time">Full-Time</option>
+                                    <option value="Part-Time">Part-Time</option>
+                                    <option value="Contractor">Contractor</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Status</label>
+                                <select id="dirEmpStatus" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border">
+                                    <option value="Active">Active</option>
+                                    <option value="Inactive">Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button type="submit" id="dirSaveBtn" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow transition-all flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-user-plus"></i>
+                                <span>Save Employee Record</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Registered Employee Directory Table -->
+                <div class="lg:col-span-8 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900">Employee List</h3>
+                            <p class="text-xs text-slate-500">Active employees can mark attendance</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="text" id="dirSearch" oninput="renderDirectoryTable()" placeholder="Search name/ID..." class="rounded-xl border-slate-300 text-xs p-2 border">
+                            <span id="dirCountBadge" class="bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-full font-mono">0 Total</span>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-y border-slate-200">
+                                <tr>
+                                    <th class="py-3 px-3">ID</th>
+                                    <th class="py-3 px-3">Name</th>
+                                    <th class="py-3 px-3">Department</th>
+                                    <th class="py-3 px-3">Type</th>
+                                    <th class="py-3 px-3">Status</th>
+                                    <th class="py-3 px-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="directoryTableBody" class="divide-y divide-slate-100">
+                                <!-- Dynamically Rendered -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ADMIN SUB-TAB 2: ATTENDANCE LOGS -->
+        <section id="adminSub-logs" class="hidden bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Audit & Verification Logs</h3>
+                    <p class="text-xs text-slate-500">Complete historical check-in data captured with network IP and GPS compliance</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <input type="text" id="logSearch" oninput="renderLogsTable()" placeholder="Search employee..." class="rounded-xl border-slate-300 text-xs p-2 border">
+                    <button onclick="exportLogsCSV()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow transition-all flex items-center space-x-1.5">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span>Export CSV</span>
+                    </button>
+                    <button onclick="clearLogs()" class="px-3 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-xs font-semibold rounded-xl border border-slate-200 transition-all">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs text-slate-600">
+                    <thead class="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-y border-slate-200">
+                        <tr>
+                            <th class="py-3 px-3">Timestamp</th>
+                            <th class="py-3 px-3">Employee</th>
+                            <th class="py-3 px-3">Type</th>
+                            <th class="py-3 px-3">Network IP</th>
+                            <th class="py-3 px-3">IP Status</th>
+                            <th class="py-3 px-3">Geofence Dist</th>
+                            <th class="py-3 px-3">GPS Status</th>
+                            <th class="py-3 px-3">Note</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTableBody" class="divide-y divide-slate-100">
+                        <!-- Dynamically Rendered -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ADMIN SUB-TAB 3: SYSTEM SETTINGS -->
+        <section id="adminSub-settings" class="hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- IP Whitelist Card -->
+                <div class="lg:col-span-6 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
+                        <h3 class="text-base font-bold text-slate-900"><i class="fa-solid fa-network-wired text-brand-600 mr-2"></i>IP Whitelist Rules</h3>
+                    </div>
+                    <form onsubmit="saveIpSettings(event)" class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">IP Addresses to Flag (One IP per line)</label>
+                            <textarea id="cfgIpList" rows="5" font-mono class="w-full rounded-xl border-slate-300 font-mono text-xs p-3 border focus:ring-brand-500"></textarea>
+                            <p class="mt-1 text-[11px] text-slate-500">Browser-side IP matching only flags entries; it is not server-side access control.</p>
+                        </div>
+                        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow transition-all">
+                            Update Whitelisted IPs
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Geofence Rules Card -->
+                <div class="lg:col-span-6 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-100 pb-3">
+                        <h3 class="text-base font-bold text-slate-900"><i class="fa-solid fa-location-dot text-brand-600 mr-2"></i>Corporate HQ Geofence</h3>
+                    </div>
+                    <form onsubmit="saveHqSettings(event)" class="space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">HQ Latitude</label>
+                                <input type="number" step="any" id="cfgHqLat" required class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">HQ Longitude</label>
+                                <input type="number" step="any" id="cfgHqLng" required class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Allowed Radius Distance (Meters)</label>
+                            <input type="number" id="cfgRadius" required class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
+                        </div>
+                        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow transition-all">
+                            Update Geofence Coordinates
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Security Settings Card -->
+                <div class="lg:col-span-12 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-100 pb-3">
+                        <h3 class="text-base font-bold text-slate-900"><i class="fa-solid fa-lock text-brand-600 mr-2"></i>Admin Security & Rules Override</h3>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Change account password form -->
+                        <form onsubmit="changeAdminPin(event)" class="space-y-3">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Change Account Password</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="password" id="cfgNewPin" placeholder="Enter New Password" minlength="8" maxlength="72" required class="flex-1 rounded-xl border-slate-300 text-xs p-2.5 border">
+                                <button type="submit" class="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow">Update Password</button>
+                            </div>
+                        </form>
+
+                        <!-- Override Bypass Mode Toggle -->
+                        <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">IP Notice Display</label>
+                            <div class="flex items-center space-x-3">
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="cfgBypassIp" onchange="toggleBypassIp(this.checked)" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-600"></div>
+                                    <span class="ml-2 text-xs font-semibold text-slate-700">Allow check-in when IP is outside the list</span>
+                                </label>
+                            </div>
+                            <p class="text-[11px] text-slate-500">This controls only a browser warning. It is not a security boundary.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ACCOUNT SIGN-IN MODAL -->
+    <div id="pinModal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center space-y-4">
+            <div class="w-12 h-12 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center mx-auto text-xl border border-brand-100">
+                <i class="fa-solid fa-lock"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-slate-900">Sign In</h3>
+                <p class="text-xs text-slate-500">Use the account assigned by your administrator</p>
+            </div>
+
+            <form onsubmit="verifyAdminPin(event)" class="space-y-3">
+                <input type="email" id="loginEmail" placeholder="Work email" autocomplete="username" required class="w-full rounded-xl border-slate-300 p-2.5 border text-sm focus:ring-brand-500">
+                <input type="password" id="pinInput" placeholder="Password" autocomplete="current-password" required class="w-full rounded-xl border-slate-300 p-2.5 border text-sm focus:ring-brand-500">
+                <p id="loginHelp" class="hidden text-left text-xs text-rose-600"></p>
+                <button type="submit" id="loginSubmitBtn" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- APPLICATION LOGIC JS -->
+    <script>
+        // --- STORAGE & GLOBAL STATE ---
+        function readStoredValue(key, fallback) {
+            try {
+                const storedValue = localStorage.getItem(key);
+                return storedValue ? JSON.parse(storedValue) : fallback;
+            } catch {
+                return fallback;
+            }
+        }
+
+        let appConfig = readStoredValue('geoConfig', {
+            adminPin: '7767',
+            hqLat: 23.8103, // Default HQ (Dhaka)
+            hqLng: 90.4125,
+            allowedRadiusMeters: 500,
+            ipWhitelist: ['192.168.1.1', '127.0.0.1', '10.0.0.15', '203.0.113.42'],
+            bypassIpRestriction: false
+        });
+
+        let employeeDirectory = readStoredValue('geoEmployees', [
+            { id: 'EMP-1001', name: 'Alex Mercer', dept: 'Engineering', type: 'Full-Time', status: 'Active' },
+            { id: 'EMP-1002', name: 'Sophia Chen', dept: 'Operations', type: 'Full-Time', status: 'Active' },
+            { id: 'EMP-1003', name: 'Marcus Vance', dept: 'Design', type: 'Contractor', status: 'Inactive' }
+        ]);
+        let attendanceLogs = readStoredValue('geoLogs', []);
+
+        let currentPortal = 'kiosk'; // 'kiosk' or 'admin'
+        let currentAdminSubTab = 'directory';
+        let isAdminAuthenticated = false;
+
+        let userState = {
+            ip: '192.168.1.1',
+            isIpValid: true,
+            lat: null,
+            lng: null,
+            distance: null,
+            isGpsValid: false
+        };
+
+        let map, userMarker, hqCircle;
+
+        // --- INIT ON LOAD ---
+        window.onload = function() {
+            initClock();
+            initMap();
+            requestGeolocation();
+            populateKioskEmployeeSelect();
+            validateUserIp();
+            loadAdminSettingsIntoUI();
+        };
+
+        function initClock() {
+            setInterval(() => {
+                const now = new Date();
+                document.getElementById('systemClock').innerText = now.toLocaleString();
+            }, 1000);
+        }
+
+        // --- PORTAL & NAVIGATION SWITCHING ---
+        function switchMainPortal(targetPortal) {
+            if (targetPortal === 'admin' && !isAdminAuthenticated) {
+                document.getElementById('pinInput').value = '';
+                document.getElementById('pinModal').classList.remove('hidden');
+                document.getElementById('pinInput').focus();
+                return;
+            }
+
+            currentPortal = targetPortal;
+
+            if (targetPortal === 'kiosk') {
+                document.getElementById('viewKiosk').classList.remove('hidden');
+                document.getElementById('viewAdmin').classList.add('hidden');
+                
+                document.getElementById('navBtnKiosk').className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-brand-600 text-white shadow";
+                document.getElementById('navBtnAdmin').className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:text-white hover:bg-slate-700";
+
+                if (map) setTimeout(() => map.invalidateSize(), 200);
+            } else {
+                document.getElementById('viewKiosk').classList.add('hidden');
+                document.getElementById('viewAdmin').classList.remove('hidden');
+
+                document.getElementById('navBtnAdmin').className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-brand-600 text-white shadow";
+                document.getElementById('navBtnKiosk').className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:text-white hover:bg-slate-700";
+
+                renderDirectoryTable();
+                renderLogsTable();
+            }
+        }
+
+        function verifyAdminPin(event) {
+            event.preventDefault();
+            const pin = document.getElementById('pinInput').value;
+            if (pin === appConfig.adminPin) {
+                isAdminAuthenticated = true;
+                closePinModal();
+                showToast("Admin access authenticated!", "success");
+                switchMainPortal('admin');
+            } else {
+                showToast("Incorrect Admin PIN!", "error");
+            }
+        }
+
+        function closePinModal() {
+            document.getElementById('pinModal').classList.add('hidden');
+        }
+
+        function switchAdminSubTab(subTabId) {
+            currentAdminSubTab = subTabId;
+
+            document.querySelectorAll('.admin-nav').forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.add('text-slate-600');
+            });
+
+            const activeBtn = document.getElementById(`adminTabBtn-${subTabId}`);
+            activeBtn.classList.add('active');
+            activeBtn.classList.remove('text-slate-600');
+
+            document.getElementById('adminSub-directory').classList.add('hidden');
+            document.getElementById('adminSub-logs').classList.add('hidden');
+            document.getElementById('adminSub-settings').classList.add('hidden');
+
+            document.getElementById(`adminSub-${subTabId}`).classList.remove('hidden');
+        }
+
+        // --- MAP & GEOLOCATION ---
+        function initMap() {
+            map = L.map('map').setView([appConfig.hqLat, appConfig.hqLng], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            updateMapGeofenceCircle();
+        }
+
+        function updateMapGeofenceCircle() {
+            if (hqCircle) map.removeLayer(hqCircle);
+            hqCircle = L.circle([appConfig.hqLat, appConfig.hqLng], {
+                color: '#10b981',
+                fillColor: '#10b981',
+                fillOpacity: 0.2,
+                radius: appConfig.allowedRadiusMeters
+            }).addTo(map).bindPopup("Corporate HQ Geofence Radius");
+        }
+
+        function requestGeolocation() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    pos => {
+                        userState.lat = pos.coords.latitude;
+                        userState.lng = pos.coords.longitude;
+                        calculateGpsCompliance();
+                    },
+                    err => {
+                        // Demo fallback proximity
+                        userState.lat = appConfig.hqLat + 0.0012;
+                        userState.lng = appConfig.hqLng + 0.0012;
+                        calculateGpsCompliance();
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            } else {
+                userState.lat = appConfig.hqLat + 0.0012;
+                userState.lng = appConfig.hqLng + 0.0012;
+                calculateGpsCompliance();
+            }
+        }
+
+        function calculateGpsCompliance() {
+            if (!userState.lat || !userState.lng) return;
+
+            const dist = getDistanceMeters(userState.lat, userState.lng, appConfig.hqLat, appConfig.hqLng);
+            userState.distance = Math.round(dist);
+            userState.isGpsValid = userState.distance <= appConfig.allowedRadiusMeters;
+
+            // UI updates
+            document.getElementById('hqDistanceLabel').innerText = `Distance to Corporate HQ: ${userState.distance} meters`;
+            const badge = document.getElementById('kioskGpsBadge');
+            if (userState.isGpsValid) {
+                badge.innerText = `Inside (${userState.distance}m)`;
+                badge.className = "text-xs font-bold text-emerald-400";
+            } else {
+                badge.innerText = `Out of Bounds (${userState.distance}m)`;
+                badge.className = "text-xs font-bold text-rose-400";
+            }
+
+            if (userMarker) map.removeLayer(userMarker);
+            userMarker = L.marker([userState.lat, userState.lng]).addTo(map)
+                .bindPopup(`<b>Your Position</b><br>Distance to HQ: ${userState.distance}m`).openPopup();
+
+            const group = new L.featureGroup([userMarker, hqCircle]);
+            map.fitBounds(group.getBounds().pad(0.2));
+        }
+
+        function getDistanceMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // --- IP SIMULATION & VERIFICATION ---
+        function toggleSimulatedIp(isAllowed) {
+            userState.ip = isAllowed ? (appConfig.ipWhitelist[0] || '192.168.1.1') : '198.51.100.99';
+            validateUserIp();
+        }
+
+        function validateUserIp() {
+            document.getElementById('displayIp').value = userState.ip;
+            userState.isIpValid = appConfig.ipWhitelist.includes(userState.ip);
+
+            const badge = document.getElementById('kioskIpBadge');
+            const ipWarning = document.getElementById('ipGateWarning');
+            const submitBtn = document.getElementById('submitBtn');
+
+            if (userState.isIpValid) {
+                badge.innerText = `Authorized (${userState.ip})`;
+                badge.className = "text-xs font-bold text-emerald-400";
+                ipWarning.classList.add('hidden');
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                badge.innerText = `Restricted (${userState.ip})`;
+                badge.className = "text-xs font-bold text-rose-400";
+
+                if (appConfig.bypassIpRestriction) {
+                    ipWarning.classList.add('hidden');
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    ipWarning.classList.remove('hidden');
+                    submitBtn.disabled = true;
+                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
+        // --- KIOSK FORM & CHECK-IN LOGIC ---
+        function populateKioskEmployeeSelect() {
+            const select = document.getElementById('empSelect');
+            select.innerHTML = '<option value="">-- Choose Registered Employee --</option>';
+
+            const activeEmps = employeeDirectory.filter(e => e.status === 'Active');
+            activeEmps.forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.id;
+                opt.textContent = `${emp.name} (${emp.id}) - ${emp.dept}`;
+                select.appendChild(opt);
+            });
+        }
+
+        function autoFillCheckIn(empId) {
+            if (!empId) {
+                document.getElementById('empId').value = '';
+                document.getElementById('empDept').value = '';
+                return;
+            }
+            const emp = employeeDirectory.find(e => e.id === empId);
+            if (emp) {
+                document.getElementById('empId').value = emp.id;
+                document.getElementById('empDept').value = emp.dept;
+            }
+        }
+
+        function submitCheckIn(event) {
+            event.preventDefault();
+
+            const select = document.getElementById('empSelect');
+            const empId = document.getElementById('empId').value;
+            const empObj = employeeDirectory.find(e => e.id === empId);
+
+            if (!empObj) {
+                showToast("Please select a valid employee.", "error");
+                return;
+            }
+
+            const checkinType = document.getElementById('checkinType').value;
+            const note = document.getElementById('checkinNote').value.trim();
+
+            const entryLog = {
+                timestamp: new Date().toLocaleString(),
+                empId: empObj.id,
+                empName: empObj.name,
+                empDept: empObj.dept,
+                type: checkinType,
+                ip: userState.ip,
+                isIpValid: userState.isIpValid,
+                lat: userState.lat,
+                lng: userState.lng,
+                distance: userState.distance,
+                isGpsValid: userState.isGpsValid,
+                note: note || 'N/A'
+            };
+
+            attendanceLogs.unshift(entryLog);
+            localStorage.setItem('geoLogs', JSON.stringify(attendanceLogs));
+
+            showToast(`Attendance (${checkinType}) saved for ${empObj.name}!`, "success");
+
+            // Reset Kiosk
+            select.value = "";
+            document.getElementById('empId').value = "";
+            document.getElementById('empDept').value = "";
+            document.getElementById('checkinNote').value = "";
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+        }
+
+        // --- ADMIN DIRECTORY MANAGMENT ---
+        function renderDirectoryTable() {
+            const tbody = document.getElementById('directoryTableBody');
+            tbody.innerHTML = '';
+
+            const searchTerm = (document.getElementById('dirSearch')?.value || '').toLowerCase();
+            const filtered = employeeDirectory.filter(e => 
+                e.name.toLowerCase().includes(searchTerm) || e.id.toLowerCase().includes(searchTerm)
+            );
+
+            document.getElementById('dirCountBadge').innerText = `${employeeDirectory.length} Total`;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-400">No employees found.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach((emp, index) => {
+                const tr = document.createElement('tr');
+                const statusBadge = emp.status === 'Active'
+                    ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Active</span>'
+                    : '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Inactive</span>';
+
+                tr.innerHTML = `
+                    <td class="py-3 px-3 font-mono font-bold text-slate-800">${escapeHtml(emp.id)}</td>
+                    <td class="py-3 px-3 font-semibold text-slate-900">${escapeHtml(emp.name)}</td>
+                    <td class="py-3 px-3">${escapeHtml(emp.dept)}</td>
+                    <td class="py-3 px-3">${escapeHtml(emp.type)}</td>
+                    <td class="py-3 px-3">${statusBadge}</td>
+                    <td class="py-3 px-3 text-right space-x-2">
+                        <button onclick="editEmployeeRecord(${index})" class="text-brand-600 hover:text-brand-800 font-bold text-xs">Edit</button>
+                        <button onclick="deleteEmployeeRecord(${index})" class="text-rose-600 hover:text-rose-800 font-bold text-xs">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            populateKioskEmployeeSelect();
+        }
+
+        function saveEmployeeRecord(event) {
+            event.preventDefault();
+
+            const editIndex = parseInt(document.getElementById('directoryEditIndex').value);
+            const id = document.getElementById('dirEmpId').value.trim();
+            const name = document.getElementById('dirEmpName').value.trim();
+            const dept = document.getElementById('dirEmpDept').value.trim() || 'General';
+            const type = document.getElementById('dirEmpType').value;
+            const status = document.getElementById('dirEmpStatus').value;
+
+            const record = { id, name, dept, type, status };
+
+            if (editIndex === -1) {
+                if (employeeDirectory.some(e => e.id === id)) {
+                    showToast(`Employee ID ${id} already exists!`, "error");
+                    return;
+                }
+                employeeDirectory.push(record);
+                localStorage.setItem('geoEmployees', JSON.stringify(employeeDirectory));
+                showToast(`Employee ${name} added!`, "success");
+            } else {
+                employeeDirectory[editIndex] = record;
+                localStorage.setItem('geoEmployees', JSON.stringify(employeeDirectory));
+                showToast(`Employee ${name} updated!`, "success");
+            }
+
+            resetDirectoryForm();
+            renderDirectoryTable();
+        }
+
+        function editEmployeeRecord(index) {
+            const emp = employeeDirectory[index];
+            document.getElementById('directoryEditIndex').value = index;
+            document.getElementById('dirEmpId').value = emp.id;
+            document.getElementById('dirEmpName').value = emp.name;
+            document.getElementById('dirEmpDept').value = emp.dept;
+            document.getElementById('dirEmpType').value = emp.type;
+            document.getElementById('dirEmpStatus').value = emp.status;
+
+            document.getElementById('directoryFormTitle').innerText = "Edit Employee Profile";
+            document.getElementById('dirSaveBtn').innerHTML = `<i class="fa-solid fa-floppy-disk"></i> <span>Update Employee</span>`;
+            document.getElementById('cancelEditBtn').classList.remove('hidden');
+        }
+
+        function resetDirectoryForm() {
+            document.getElementById('directoryEditIndex').value = "-1";
+            document.getElementById('directoryForm').reset();
+            document.getElementById('directoryFormTitle').innerText = "Add New Employee";
+            document.getElementById('dirSaveBtn').innerHTML = `<i class="fa-solid fa-user-plus"></i> <span>Save Employee Record</span>`;
+            document.getElementById('cancelEditBtn').classList.add('hidden');
+        }
+
+        function deleteEmployeeRecord(index) {
+            const emp = employeeDirectory[index];
+            employeeDirectory.splice(index, 1);
+            localStorage.setItem('geoEmployees', JSON.stringify(employeeDirectory));
+            showToast(`Deleted ${emp.name}`, "info");
+            renderDirectoryTable();
+        }
+
+        // --- ADMIN ATTENDANCE LOGS ---
+        function renderLogsTable() {
+            const tbody = document.getElementById('logsTableBody');
+            tbody.innerHTML = '';
+
+            const searchTerm = (document.getElementById('logSearch')?.value || '').toLowerCase();
+            const filtered = attendanceLogs.filter(l => 
+                l.empName.toLowerCase().includes(searchTerm) || l.empId.toLowerCase().includes(searchTerm)
+            );
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center text-slate-400">No attendance records logged yet.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(log => {
+                const tr = document.createElement('tr');
+                const ipBadge = log.isIpValid 
+                    ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">Authorized</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800">Restricted</span>';
+
+                const gpsBadge = log.isGpsValid
+                    ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">In-Bounds</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">Flagged Dist</span>';
+
+                tr.innerHTML = `
+                    <td class="py-3 px-3 font-mono text-slate-500">${escapeHtml(log.timestamp)}</td>
+                    <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(log.empName)} <span class="text-xs font-normal text-slate-400">(${escapeHtml(log.empId)})</span></td>
+                    <td class="py-3 px-3 font-semibold text-brand-700">${escapeHtml(log.type)}</td>
+                    <td class="py-3 px-3 font-mono">${escapeHtml(log.ip)}</td>
+                    <td class="py-3 px-3">${ipBadge}</td>
+                    <td class="py-3 px-3 font-mono">${log.distance ? log.distance + 'm' : 'N/A'}</td>
+                    <td class="py-3 px-3">${gpsBadge}</td>
+                    <td class="py-3 px-3 text-slate-500 italic max-w-xs truncate">${escapeHtml(log.note)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function clearLogs() {
+            attendanceLogs = [];
+            localStorage.setItem('geoLogs', JSON.stringify(attendanceLogs));
+            renderLogsTable();
+            showToast("Attendance logs cleared.", "info");
+        }
+
+        function exportLogsCSV() {
+            if (attendanceLogs.length === 0) {
+                showToast("No logs available to export.", "error");
+                return;
+            }
+            let csvContent = "data:text/csv;charset=utf-8,Timestamp,Employee ID,Employee Name,Department,Entry Type,IP Address,IP Authorized,Distance (m),GPS Valid,Note\n";
+            attendanceLogs.forEach(l => {
+                csvContent += `"${l.timestamp}","${l.empId}","${l.empName}","${l.empDept}","${l.type}","${l.ip}","${l.isIpValid}","${l.distance}","${l.isGpsValid}","${l.note}"\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Attendance_Export_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- ADMIN SETTINGS MANAGMENT ---
+        function loadAdminSettingsIntoUI() {
+            document.getElementById('cfgHqLat').value = appConfig.hqLat;
+            document.getElementById('cfgHqLng').value = appConfig.hqLng;
+            document.getElementById('cfgRadius').value = appConfig.allowedRadiusMeters;
+            document.getElementById('cfgIpList').value = appConfig.ipWhitelist.join('\n');
+            document.getElementById('cfgBypassIp').checked = appConfig.bypassIpRestriction;
+        }
+
+        function saveIpSettings(event) {
+            event.preventDefault();
+            const rawIps = document.getElementById('cfgIpList').value;
+            appConfig.ipWhitelist = rawIps.split('\n').map(i => i.trim()).filter(i => i.length > 0);
+            localStorage.setItem('geoConfig', JSON.stringify(appConfig));
+            validateUserIp();
+            showToast("IP Whitelist updated!", "success");
+        }
+
+        function saveHqSettings(event) {
+            event.preventDefault();
+            appConfig.hqLat = parseFloat(document.getElementById('cfgHqLat').value);
+            appConfig.hqLng = parseFloat(document.getElementById('cfgHqLng').value);
+            appConfig.allowedRadiusMeters = parseInt(document.getElementById('cfgRadius').value);
+            localStorage.setItem('geoConfig', JSON.stringify(appConfig));
+            updateMapGeofenceCircle();
+            calculateGpsCompliance();
+            showToast("Geofence settings updated!", "success");
+        }
+
+        function changeAdminPin(event) {
+            event.preventDefault();
+            const newPin = document.getElementById('cfgNewPin').value.trim();
+            if (newPin.length < 4) {
+                showToast("PIN should be at least 4 digits.", "error");
+                return;
+            }
+            appConfig.adminPin = newPin;
+            localStorage.setItem('geoConfig', JSON.stringify(appConfig));
+            document.getElementById('cfgNewPin').value = '';
+            showToast("Admin PIN changed successfully!", "success");
+        }
+
+        function toggleBypassIp(checked) {
+            appConfig.bypassIpRestriction = checked;
+            localStorage.setItem('geoConfig', JSON.stringify(appConfig));
+            validateUserIp();
+            showToast(`Strict IP enforcement ${checked ? 'disabled' : 'enabled'}.`, "info");
+        }
+
+        // --- TOAST NOTIFICATIONS ---
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const msg = document.getElementById('toastMessage');
+            const icon = document.getElementById('toastIcon');
+
+            msg.innerText = message;
+            if (type === 'success') {
+                icon.className = "fa-solid fa-circle-check text-emerald-400 text-xl";
+            } else if (type === 'error') {
+                icon.className = "fa-solid fa-circle-xmark text-rose-400 text-xl";
+            } else {
+                icon.className = "fa-solid fa-circle-info text-brand-400 text-xl";
+            }
+
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="./supabase-config.js"></script>
+    <script src="./cloud.js"></script>
+</body>
+</html>

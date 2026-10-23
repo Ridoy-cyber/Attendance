@@ -1,0 +1,39 @@
+{
+  "name": "geoguard-attendance",
+  "version": "1.0.0",
+  "description": "GeoGuard Attendance desktop app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:windows": "electron-builder --win nsis",
+    "build:site": "node build-site.js"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.geoguard.attendance",
+    "productName": "GeoGuard Attendance",
+    "files": [
+      "main.js",
+      "cloud.js",
+      "supabase-config.js",
+      "employee_attendance_location_verification_system (2).html"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "allowScripts": {
+    "electron@39.8.10": true,
+    "electron-winstaller@5.4.0": true
+  }
+}
