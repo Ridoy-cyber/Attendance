@@ -359,6 +359,18 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <input type="text" id="logSearch" oninput="renderLogsTable()" placeholder="Search employee..." class="rounded-xl border-slate-300 text-xs p-2 border">
+                    <label class="flex items-center gap-1.5 text-xs text-slate-600">
+                        <span>From</span>
+                        <input type="date" id="logDateFrom" onchange="renderLogsTable()" class="rounded-xl border-slate-300 text-xs p-2 border">
+                    </label>
+                    <label class="flex items-center gap-1.5 text-xs text-slate-600">
+                        <span>To</span>
+                        <input type="date" id="logDateTo" onchange="renderLogsTable()" class="rounded-xl border-slate-300 text-xs p-2 border">
+                    </label>
+                    <button onclick="clearLogFilters()" type="button" title="Clear log filters" class="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl border border-slate-200" aria-label="Clear log filters">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
+                    </button>
+                    <span id="logCountBadge" class="text-xs text-slate-500"></span>
                     <button onclick="exportLogsCSV()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow transition-all flex items-center space-x-1.5">
                         <i class="fa-solid fa-file-csv"></i>
                         <span>Export CSV</span>
@@ -917,17 +929,31 @@
         }
 
         // --- ADMIN ATTENDANCE LOGS ---
+        function getFilteredLogs() {
+            const searchTerm = (document.getElementById('logSearch')?.value || '').toLowerCase();
+            const dateFrom = document.getElementById('logDateFrom')?.value;
+            const dateTo = document.getElementById('logDateTo')?.value;
+            const startTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+            const endTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+
+            return attendanceLogs.filter(log => {
+                const matchesSearch = log.empName.toLowerCase().includes(searchTerm)
+                    || log.empId.toLowerCase().includes(searchTerm);
+                const timestamp = new Date(log.createdAt || log.timestamp).getTime();
+                const matchesFrom = startTime === null || (Number.isFinite(timestamp) && timestamp >= startTime);
+                const matchesTo = endTime === null || (Number.isFinite(timestamp) && timestamp <= endTime);
+                return matchesSearch && matchesFrom && matchesTo;
+            });
+        }
+
         function renderLogsTable() {
             const tbody = document.getElementById('logsTableBody');
             tbody.innerHTML = '';
-
-            const searchTerm = (document.getElementById('logSearch')?.value || '').toLowerCase();
-            const filtered = attendanceLogs.filter(l => 
-                l.empName.toLowerCase().includes(searchTerm) || l.empId.toLowerCase().includes(searchTerm)
-            );
+            const filtered = getFilteredLogs();
+            document.getElementById('logCountBadge').innerText = `${filtered.length} of ${attendanceLogs.length} records`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center text-slate-400">No attendance records logged yet.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center text-slate-400">No attendance records match these filters.</td></tr>`;
                 return;
             }
 
@@ -955,6 +981,13 @@
             });
         }
 
+        function clearLogFilters() {
+            document.getElementById('logSearch').value = '';
+            document.getElementById('logDateFrom').value = '';
+            document.getElementById('logDateTo').value = '';
+            renderLogsTable();
+        }
+
         function clearLogs() {
             attendanceLogs = [];
             localStorage.setItem('geoLogs', JSON.stringify(attendanceLogs));
@@ -963,15 +996,16 @@
         }
 
         function exportLogsCSV() {
-            if (attendanceLogs.length === 0) {
-                showToast("No logs available to export.", "error");
+            const filtered = getFilteredLogs();
+            if (filtered.length === 0) {
+                showToast("No matching logs available to export.", "error");
                 return;
             }
-            let csvContent = "data:text/csv;charset=utf-8,Timestamp,Employee ID,Employee Name,Department,Entry Type,IP Address,IP Authorized,Distance (m),GPS Valid,Note\n";
-            attendanceLogs.forEach(l => {
-                csvContent += `"${l.timestamp}","${l.empId}","${l.empName}","${l.empDept}","${l.type}","${l.ip}","${l.isIpValid}","${l.distance}","${l.isGpsValid}","${l.note}"\n`;
-            });
-            const encodedUri = encodeURI(csvContent);
+            const quoteCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'IP Address', 'IP Authorized', 'Distance (m)', 'GPS Valid', 'Note'];
+            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, log.ip, log.isIpValid, log.distance, log.isGpsValid, log.note]);
+            const csvContent = [headers, ...rows].map(row => row.map(quoteCsv).join(',')).join('\n');
+            const encodedUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
             link.setAttribute("download", `Attendance_Export_${new Date().toISOString().slice(0,10)}.csv`);

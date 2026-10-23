@@ -44,6 +44,7 @@
     function mapLog(row) {
         return {
             timestamp: new Date(row.created_at).toLocaleString(),
+            createdAt: row.created_at,
             empId: row.emp_id,
             empName: row.emp_name,
             empDept: row.emp_dept,
