@@ -108,6 +108,10 @@ create trigger on_auth_user_created_profile
     after insert on auth.users
     for each row execute procedure public.create_employee_profile();
 
+insert into public.profiles (id)
+select id from auth.users
+on conflict (id) do nothing;
+
 drop trigger if exists before_attendance_log_set_employee on public.attendance_logs;
 create trigger before_attendance_log_set_employee
     before insert on public.attendance_logs
