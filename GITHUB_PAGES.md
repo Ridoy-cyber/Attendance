@@ -4,7 +4,7 @@ GitHub Pages hosts the app; Supabase Auth and Postgres share employee accounts, 
 
 ## Supabase Setup
 
-1. Run `supabase/schema.sql` in the Supabase SQL Editor if it has not already been applied.
+1. Run or rerun the current `supabase/schema.sql` in the Supabase SQL Editor to install or update the tables, triggers, and row-level security policies.
 2. `supabase-config.js` contains the project URL and public publishable key. Only the public key belongs in the app; never add a `service_role` key.
 3. Disable public sign-ups in Supabase Authentication settings. Create the first account in Authentication > Users, then promote it in the SQL Editor, replacing the email:
 

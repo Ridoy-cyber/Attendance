@@ -94,9 +94,15 @@ begin
         raise exception 'Attendance can only be recorded for an active employee';
     end if;
 
-    if not (select public.is_admin())
-        and new.emp_id <> (select public.current_employee_id()) then
-        raise exception 'Employees can only record attendance for their assigned account';
+    if not (select public.is_admin()) then
+        if new.user_id is distinct from (select auth.uid()) then
+            raise exception 'Attendance user must match the signed-in account';
+        end if;
+
+        if (select public.current_employee_id()) is null
+            or new.emp_id is distinct from (select public.current_employee_id()) then
+            raise exception 'Employees can only record attendance for their assigned account';
+        end if;
     end if;
 
     return new;
@@ -176,6 +182,10 @@ create policy "Employees submit their own attendance"
         and (
             emp_id = (select public.current_employee_id())
             or (select public.is_admin())
+        )
+        and (
+            (select public.is_admin())
+            or (select public.current_employee_id()) is not null
         )
     );
 
