@@ -825,8 +825,6 @@
             if (!empId) {
                 document.getElementById('empId').value = '';
                 document.getElementById('empDept').value = '';
-                updateMapGeofenceCircle();
-                calculateGpsCompliance();
                 updateCheckInEligibility();
                 return;
             }
@@ -835,8 +833,6 @@
                 document.getElementById('empId').value = emp.id;
                 document.getElementById('empDept').value = emp.dept;
             }
-            updateMapGeofenceCircle();
-            calculateGpsCompliance();
             updateCheckInEligibility();
         }
 
