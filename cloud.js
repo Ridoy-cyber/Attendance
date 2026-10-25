@@ -126,7 +126,6 @@
         }
 
         document.getElementById('signOutBtn').classList.remove('hidden');
-        document.getElementById('pinInput').value = '';
         document.getElementById('pinModal').classList.add('hidden');
         showToast(`Signed in as ${profile.role}.`, 'success');
 
@@ -214,7 +213,7 @@
         originalSwitchAdminSubTab(subTabId);
     };
 
-    window.verifyAdminPin = async function(event) {
+    window.sendSignInLink = async function(event) {
         event.preventDefault();
         if (!state.client) {
             showLoginMessage('Supabase is not configured.');
@@ -224,9 +223,12 @@
         const button = document.getElementById('loginSubmitBtn');
         button.disabled = true;
         showLoginMessage('');
-        const { data, error } = await state.client.auth.signInWithPassword({
+        const redirectTo = window.location.protocol === 'file:'
+            ? 'https://ridoy-cyber.github.io/Attendance/'
+            : window.location.href.split('#')[0];
+        const { error } = await state.client.auth.signInWithOtp({
             email: document.getElementById('loginEmail').value.trim(),
-            password: document.getElementById('pinInput').value
+            options: { emailRedirectTo: redirectTo, shouldCreateUser: false }
         });
         button.disabled = false;
 
@@ -234,7 +236,7 @@
             showLoginMessage(error.message);
             return;
         }
-        await applySignedInUser(data.user);
+        showLoginMessage('If this email has an active GeoGuard account, we sent a sign-in link. Open it to finish signing in.', false);
     };
 
     window.signOutUser = async function() {

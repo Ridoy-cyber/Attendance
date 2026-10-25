@@ -427,18 +427,17 @@
     <div id="pinModal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center space-y-4">
             <div class="w-12 h-12 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center mx-auto text-xl border border-brand-100">
-                <i class="fa-solid fa-lock"></i>
+                <i class="fa-solid fa-envelope"></i>
             </div>
             <div>
                 <h3 class="text-lg font-bold text-slate-900">Sign In</h3>
-                <p class="text-xs text-slate-500">Use the account assigned by your administrator</p>
+                <p class="text-xs text-slate-500">Enter your registered work email. We’ll send you a one-time sign-in link.</p>
             </div>
 
-            <form onsubmit="verifyAdminPin(event)" class="space-y-3">
-                <input type="email" id="loginEmail" placeholder="Work email" autocomplete="username" required class="w-full rounded-xl border-slate-300 p-2.5 border text-sm focus:ring-brand-500">
-                <input type="password" id="pinInput" placeholder="Password" autocomplete="current-password" required class="w-full rounded-xl border-slate-300 p-2.5 border text-sm focus:ring-brand-500">
+            <form onsubmit="sendSignInLink(event)" class="space-y-3">
+                <input type="email" id="loginEmail" placeholder="Work email" autocomplete="email" required class="w-full rounded-xl border-slate-300 p-2.5 border text-sm focus:ring-brand-500">
                 <p id="loginHelp" class="hidden text-left text-xs text-rose-600"></p>
-                <button type="submit" id="loginSubmitBtn" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow">Sign In</button>
+                <button type="submit" id="loginSubmitBtn" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow">Email me a sign-in link</button>
             </form>
         </div>
     </div>
@@ -502,9 +501,8 @@
         // --- PORTAL & NAVIGATION SWITCHING ---
         function switchMainPortal(targetPortal) {
             if (targetPortal === 'admin' && !isAdminAuthenticated) {
-                document.getElementById('pinInput').value = '';
                 document.getElementById('pinModal').classList.remove('hidden');
-                document.getElementById('pinInput').focus();
+                document.getElementById('loginEmail').focus();
                 return;
             }
 
@@ -530,17 +528,9 @@
             }
         }
 
-        function verifyAdminPin(event) {
+        function sendSignInLink(event) {
             event.preventDefault();
-            const pin = document.getElementById('pinInput').value;
-            if (pin === appConfig.adminPin) {
-                isAdminAuthenticated = true;
-                closePinModal();
-                showToast("Admin access authenticated!", "success");
-                switchMainPortal('admin');
-            } else {
-                showToast("Incorrect Admin PIN!", "error");
-            }
+            showToast('Email link sign-in requires the shared account service.', 'error');
         }
 
         function closePinModal() {

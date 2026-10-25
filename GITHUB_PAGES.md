@@ -14,7 +14,7 @@ GitHub Pages hosts the app; Supabase Auth and Postgres share employee accounts, 
 	where id = (select id from auth.users where email = 'admin@example.com');
 	```
 
-4. After the site is deployed, add its full GitHub Pages URL to Supabase Authentication > URL Configuration > Redirect URLs.
+4. Enable the Email provider in Supabase Authentication. Employees sign in by entering their registered email and opening the one-time link Supabase sends. After the site is deployed, add its full GitHub Pages URL to Supabase Authentication > URL Configuration > Redirect URLs so the link returns to the app.
 5. Sign in as admin, add employee directory records, create employee Auth accounts, then assign each profile its employee ID in the SQL Editor:
 
 	```sql
