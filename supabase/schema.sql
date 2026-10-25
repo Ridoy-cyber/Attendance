@@ -19,6 +19,7 @@ create table if not exists public.app_settings (
     hq_lat double precision not null default 23.8103,
     hq_lng double precision not null default 90.4125,
     allowed_radius_meters integer not null default 500 check (allowed_radius_meters > 0),
+    max_location_accuracy_meters integer not null default 100 check (max_location_accuracy_meters > 0),
     ip_whitelist text[] not null default array['192.168.1.1', '127.0.0.1', '10.0.0.15', '203.0.113.42'],
     bypass_ip_restriction boolean not null default false,
     updated_at timestamptz not null default now()
@@ -35,11 +36,20 @@ create table if not exists public.attendance_logs (
     is_ip_valid boolean not null,
     lat double precision,
     lng double precision,
+    accuracy_meters double precision,
     distance integer,
     is_gps_valid boolean not null,
     note text not null default 'N/A',
     created_at timestamptz not null default now()
 );
+
+alter table public.app_settings
+    add column if not exists max_location_accuracy_meters integer not null default 100;
+alter table public.attendance_logs
+    add column if not exists accuracy_meters double precision;
+alter table public.attendance_logs
+    alter column accuracy_meters drop not null,
+    alter column accuracy_meters drop default;
 
 create or replace function public.is_admin()
 returns boolean
@@ -85,6 +95,12 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+    location_settings public.app_settings%rowtype;
+    latitude_delta double precision;
+    longitude_delta double precision;
+    haversine double precision;
+    computed_distance double precision;
 begin
     select name, dept into new.emp_name, new.emp_dept
     from public.employees
@@ -103,6 +119,38 @@ begin
             or new.emp_id is distinct from (select public.current_employee_id()) then
             raise exception 'Employees can only record attendance for their assigned account';
         end if;
+    end if;
+
+    select * into location_settings
+    from public.app_settings
+    where id = 1;
+
+    if not found then
+        raise exception 'HQ geofence settings are not configured';
+    end if;
+
+    if new.lat is null or new.lng is null
+        or new.lat < -90 or new.lat > 90
+        or new.lng < -180 or new.lng > 180
+        or new.accuracy_meters is null
+        or new.accuracy_meters < 0
+        or new.accuracy_meters > location_settings.max_location_accuracy_meters then
+        raise exception 'A reliable device location is required to check in';
+    end if;
+
+    latitude_delta := radians(new.lat - location_settings.hq_lat);
+    longitude_delta := radians(new.lng - location_settings.hq_lng);
+    haversine := sin(latitude_delta / 2) * sin(latitude_delta / 2)
+        + cos(radians(location_settings.hq_lat)) * cos(radians(new.lat))
+        * sin(longitude_delta / 2) * sin(longitude_delta / 2);
+    computed_distance := 2 * 6371000 * asin(sqrt(least(1, haversine)));
+
+    new.distance := round(computed_distance)::integer;
+    new.is_gps_valid := computed_distance + new.accuracy_meters
+        <= location_settings.allowed_radius_meters;
+
+    if not new.is_gps_valid then
+        raise exception 'Check-in is only allowed within the HQ geofence';
     end if;
 
     return new;

@@ -8,9 +8,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Leaflet CSS & JS for OpenStreetMap -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -103,10 +100,6 @@
             <!-- Quick Status Summary -->
             <div class="flex items-center gap-3">
                 <div class="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-center">
-                    <span class="block text-[10px] uppercase font-bold text-brand-200">Network IP</span>
-                    <span id="kioskIpBadge" class="text-xs font-bold text-white">Checking...</span>
-                </div>
-                <div class="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-center">
                     <span class="block text-[10px] uppercase font-bold text-brand-200">Geofence</span>
                     <span id="kioskGpsBadge" class="text-xs font-bold text-white">Pending</span>
                 </div>
@@ -143,18 +136,12 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Entry Type</label>
-                            <select id="checkinType" class="w-full rounded-xl border-slate-300 bg-white text-sm focus:ring-brand-500 p-2.5 border font-medium">
-                                <option value="Clock In">Clock In (Shift Start)</option>
-                                <option value="Clock Out">Clock Out (Shift End)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Reported Public IP</label>
-                            <input type="text" id="displayIp" readonly class="w-full rounded-xl border-slate-200 bg-slate-100 text-sm p-2.5 border font-mono text-slate-600">
-                        </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Entry Type</label>
+                        <select id="checkinType" class="w-full rounded-xl border-slate-300 bg-white text-sm focus:ring-brand-500 p-2.5 border font-medium">
+                            <option value="Clock In">Clock In (Shift Start)</option>
+                            <option value="Clock Out">Clock Out (Shift End)</option>
+                        </select>
                     </div>
 
                     <div>
@@ -162,11 +149,10 @@
                         <textarea id="checkinNote" rows="2" placeholder="e.g. Arrived on-site for morning sync..." class="w-full rounded-xl border-slate-300 text-sm p-2.5 border focus:ring-brand-500"></textarea>
                     </div>
 
-                    <!-- Submission Gate Warning Banner if IP Blocked -->
-                    <div id="ipGateWarning" class="hidden p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start space-x-2.5">
+                    <div id="locationGateWarning" class="hidden p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start space-x-2.5">
                         <i class="fa-solid fa-triangle-exclamation text-rose-600 text-base mt-0.5"></i>
                         <div>
-                            <span class="font-bold">IP notice:</span> This address is outside the configured list. Browser-side IP matching is informational only.
+                            <span class="font-bold">Check-in blocked:</span> Allow precise location and move within the configured HQ geofence before submitting.
                         </div>
                     </div>
 
@@ -174,7 +160,7 @@
                         <i class="fa-solid fa-fingerprint text-lg"></i>
                         <span>Confirm Attendance Entry</span>
                     </button>
-                    <p class="text-[11px] text-slate-500">Submitting records your entry, device location, and reported public IP for authorized administrators to review.</p>
+                    <p class="text-[11px] text-slate-500">Check-ins are accepted only when the reported location and accuracy fit inside the HQ geofence.</p>
                 </form>
             </div>
 
@@ -194,7 +180,7 @@
 
                     <div id="map" class="shadow-inner border border-slate-200"></div>
 
-                    <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div class="grid grid-cols-3 gap-2 text-xs pt-1">
                         <div class="flex items-center space-x-2 text-slate-600">
                             <span class="w-3 h-3 rounded-full bg-blue-500 inline-block border border-white shadow-sm"></span>
                             <span>Your Location</span>
@@ -203,24 +189,9 @@
                             <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white shadow-sm"></span>
                             <span>HQ Geofence Zone</span>
                         </div>
-                    </div>
-                </div>
-
-                <div class="bg-slate-900 text-slate-200 rounded-2xl p-4 shadow-md border border-slate-800">
-                    <div class="flex items-start space-x-3">
-                        <div class="p-2 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
-                            <i class="fa-solid fa-flask text-base"></i>
-                        </div>
-                        <div class="flex-1 space-y-2">
-                            <div>
-                                <h4 class="text-xs font-bold text-white uppercase tracking-wider">Network Testing Sandbox</h4>
-                                <p class="text-[11px] text-slate-400">Simulate connecting from inside vs outside the corporate network.</p>
-                            </div>
-                            <label class="inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="simIpToggle" onchange="toggleSimulatedIp(this.checked)" checked class="sr-only peer">
-                                <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-600"></div>
-                                <span class="ml-2 text-xs font-semibold text-slate-300">Simulate Allowed Corporate IP</span>
-                            </label>
+                        <div class="flex items-center space-x-2 text-slate-600">
+                            <span class="w-3 h-3 rounded-full bg-blue-100 inline-block border border-blue-500"></span>
+                            <span>Location Accuracy</span>
                         </div>
                     </div>
                 </div>
@@ -355,7 +326,7 @@
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
                     <h3 class="text-base font-bold text-slate-900">Audit & Verification Logs</h3>
-                    <p class="text-xs text-slate-500">Complete historical check-in data captured with network IP and GPS compliance</p>
+                    <p class="text-xs text-slate-500">Complete historical check-in data captured with geofence verification</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <input type="text" id="logSearch" oninput="renderLogsTable()" placeholder="Search employee..." class="rounded-xl border-slate-300 text-xs p-2 border">
@@ -388,9 +359,8 @@
                             <th class="py-3 px-3">Timestamp</th>
                             <th class="py-3 px-3">Employee</th>
                             <th class="py-3 px-3">Type</th>
-                            <th class="py-3 px-3">Network IP</th>
-                            <th class="py-3 px-3">IP Status</th>
                             <th class="py-3 px-3">Geofence Dist</th>
+                            <th class="py-3 px-3">GPS Accuracy</th>
                             <th class="py-3 px-3">GPS Status</th>
                             <th class="py-3 px-3">Note</th>
                         </tr>
@@ -405,25 +375,8 @@
         <!-- ADMIN SUB-TAB 3: SYSTEM SETTINGS -->
         <section id="adminSub-settings" class="hidden space-y-6">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <!-- IP Whitelist Card -->
-                <div class="lg:col-span-6 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
-                    <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
-                        <h3 class="text-base font-bold text-slate-900"><i class="fa-solid fa-network-wired text-brand-600 mr-2"></i>IP Whitelist Rules</h3>
-                    </div>
-                    <form onsubmit="saveIpSettings(event)" class="space-y-3">
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">IP Addresses to Flag (One IP per line)</label>
-                            <textarea id="cfgIpList" rows="5" font-mono class="w-full rounded-xl border-slate-300 font-mono text-xs p-3 border focus:ring-brand-500"></textarea>
-                            <p class="mt-1 text-[11px] text-slate-500">Browser-side IP matching only flags entries; it is not server-side access control.</p>
-                        </div>
-                        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow transition-all">
-                            Update Whitelisted IPs
-                        </button>
-                    </form>
-                </div>
-
                 <!-- Geofence Rules Card -->
-                <div class="lg:col-span-6 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                <div class="lg:col-span-12 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
                     <div class="border-b border-slate-100 pb-3">
                         <h3 class="text-base font-bold text-slate-900"><i class="fa-solid fa-location-dot text-brand-600 mr-2"></i>Corporate HQ Geofence</h3>
                     </div>
@@ -463,18 +416,6 @@
                             </div>
                         </form>
 
-                        <!-- Override Bypass Mode Toggle -->
-                        <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">IP Notice Display</label>
-                            <div class="flex items-center space-x-3">
-                                <label class="inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="cfgBypassIp" onchange="toggleBypassIp(this.checked)" class="sr-only peer">
-                                    <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-600"></div>
-                                    <span class="ml-2 text-xs font-semibold text-slate-700">Allow check-in when IP is outside the list</span>
-                                </label>
-                            </div>
-                            <p class="text-[11px] text-slate-500">This controls only a browser warning. It is not a security boundary.</p>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -515,12 +456,10 @@
         }
 
         let appConfig = readStoredValue('geoConfig', {
-            adminPin: '7767',
             hqLat: 23.8103, // Default HQ (Dhaka)
             hqLng: 90.4125,
             allowedRadiusMeters: 500,
-            ipWhitelist: ['192.168.1.1', '127.0.0.1', '10.0.0.15', '203.0.113.42'],
-            bypassIpRestriction: false
+            maxLocationAccuracyMeters: 100
         });
 
         let employeeDirectory = readStoredValue('geoEmployees', [
@@ -535,8 +474,6 @@
         let isAdminAuthenticated = false;
 
         let userState = {
-            ip: '192.168.1.1',
-            isIpValid: true,
             lat: null,
             lng: null,
             accuracy: null,
@@ -552,7 +489,6 @@
             initMap();
             requestGeolocation();
             populateKioskEmployeeSelect();
-            validateUserIp();
             loadAdminSettingsIntoUI();
         };
 
@@ -632,23 +568,33 @@
 
         // --- MAP & GEOLOCATION ---
         function initMap() {
-            map = L.map('map').setView([appConfig.hqLat, appConfig.hqLng], 14);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
-
+            if (!window.google?.maps) {
+                document.getElementById('map').innerHTML = '<div class="h-full flex items-center justify-center text-sm text-slate-500">Google Maps is unavailable. Configure a valid Maps JavaScript API key.</div>';
+                return;
+            }
+            const hq = { lat: Number(appConfig.hqLat), lng: Number(appConfig.hqLng) };
+            map = new google.maps.Map(document.getElementById('map'), { center: hq, zoom: 15, mapTypeControl: false, streetViewControl: false, fullscreenControl: true });
             updateMapGeofenceCircle();
+            updateLocationOnMap();
         }
 
         function updateMapGeofenceCircle() {
-            if (hqCircle) map.removeLayer(hqCircle);
-            hqCircle = L.circle([appConfig.hqLat, appConfig.hqLng], {
-                color: '#10b981',
-                fillColor: '#10b981',
-                fillOpacity: 0.2,
-                radius: appConfig.allowedRadiusMeters
-            }).addTo(map).bindPopup("Corporate HQ Geofence Radius");
+            if (!map || !window.google?.maps) return;
+            const center = { lat: Number(appConfig.hqLat), lng: Number(appConfig.hqLng) };
+            if (hqCircle) hqCircle.setMap(null);
+            hqCircle = new google.maps.Circle({ map, center, radius: Number(appConfig.allowedRadiusMeters), strokeColor: '#10b981', strokeOpacity: 0.9, strokeWeight: 2, fillColor: '#10b981', fillOpacity: 0.2 });
+            if (!userMarker) map.setCenter(center);
+        }
+
+        function updateLocationOnMap() {
+            if (!map || !window.google?.maps || !Number.isFinite(userState.lat) || !Number.isFinite(userState.lng)) return;
+            const position = { lat: Number(userState.lat), lng: Number(userState.lng) };
+            if (!userMarker) userMarker = new google.maps.Marker({ map, position, title: 'Your live location', icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#3b82f6', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } });
+            else userMarker.setPosition(position);
+            if (!userAccuracyCircle) userAccuracyCircle = new google.maps.Circle({ map, center: position, strokeColor: '#3b82f6', strokeOpacity: 0.8, strokeWeight: 1, fillColor: '#3b82f6', fillOpacity: 0.12 });
+            userAccuracyCircle.setCenter(position);
+            userAccuracyCircle.setRadius(Math.max(0, Number(userState.accuracy) || 0));
+            map.panTo(position);
         }
 
         function requestGeolocation() {
@@ -690,12 +636,13 @@
             const accuracy = Math.max(0, Number(userState.accuracy) || 0);
             const definitelyInside = dist + accuracy <= appConfig.allowedRadiusMeters;
             const definitelyOutside = dist - accuracy > appConfig.allowedRadiusMeters;
-            userState.isGpsValid = definitelyInside;
+            const meetsAccuracyRequirement = accuracy <= appConfig.maxLocationAccuracyMeters;
+            userState.isGpsValid = definitelyInside && meetsAccuracyRequirement;
 
             // UI updates
             document.getElementById('hqDistanceLabel').innerText = `Estimated distance to HQ: ${userState.distance}m (accuracy ±${Math.round(accuracy)}m)`;
             const badge = document.getElementById('kioskGpsBadge');
-            if (accuracy > 1000) {
+            if (!meetsAccuracyRequirement) {
                 badge.innerText = `Low accuracy (±${Math.round(accuracy)}m)`;
                 badge.className = "text-xs font-bold text-amber-300";
             } else if (definitelyInside) {
@@ -709,20 +656,7 @@
                 badge.className = "text-xs font-bold text-amber-300";
             }
 
-            if (userMarker) map.removeLayer(userMarker);
-            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
-            userMarker = L.marker([userState.lat, userState.lng]).addTo(map)
-                .bindPopup(`<b>Estimated Position</b><br>Distance to HQ: ${userState.distance}m<br>Accuracy: ±${Math.round(accuracy)}m`).openPopup();
-            userAccuracyCircle = L.circle([userState.lat, userState.lng], {
-                color: '#3b82f6',
-                fillColor: '#3b82f6',
-                fillOpacity: 0.12,
-                weight: 1,
-                radius: accuracy
-            }).addTo(map);
-
-            const group = new L.featureGroup([userAccuracyCircle, hqCircle]);
-            map.fitBounds(group.getBounds().pad(0.2));
+            updateLocationOnMap();
         }
 
         function getDistanceMeters(lat1, lon1, lat2, lon2) {
@@ -737,42 +671,6 @@
                       Math.sin(Δλ/2) * Math.sin(Δλ/2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             return R * c;
-        }
-
-        // --- IP SIMULATION & VERIFICATION ---
-        function toggleSimulatedIp(isAllowed) {
-            userState.ip = isAllowed ? (appConfig.ipWhitelist[0] || '192.168.1.1') : '198.51.100.99';
-            validateUserIp();
-        }
-
-        function validateUserIp() {
-            document.getElementById('displayIp').value = userState.ip;
-            userState.isIpValid = appConfig.ipWhitelist.includes(userState.ip);
-
-            const badge = document.getElementById('kioskIpBadge');
-            const ipWarning = document.getElementById('ipGateWarning');
-            const submitBtn = document.getElementById('submitBtn');
-
-            if (userState.isIpValid) {
-                badge.innerText = `Authorized (${userState.ip})`;
-                badge.className = "text-xs font-bold text-emerald-400";
-                ipWarning.classList.add('hidden');
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            } else {
-                badge.innerText = `Restricted (${userState.ip})`;
-                badge.className = "text-xs font-bold text-rose-400";
-
-                if (appConfig.bypassIpRestriction) {
-                    ipWarning.classList.add('hidden');
-                    submitBtn.disabled = false;
-                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                } else {
-                    ipWarning.classList.remove('hidden');
-                    submitBtn.disabled = true;
-                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                }
-            }
         }
 
         // --- KIOSK FORM & CHECK-IN LOGIC ---
@@ -813,6 +711,11 @@
                 showToast("Please select a valid employee.", "error");
                 return;
             }
+            if (!userState.isGpsValid || !Number.isFinite(userState.accuracy)
+                || userState.accuracy > appConfig.maxLocationAccuracyMeters) {
+                showToast("Check-in is available only within the HQ geofence with a reliable location fix.", "error");
+                return;
+            }
 
             const checkinType = document.getElementById('checkinType').value;
             const note = document.getElementById('checkinNote').value.trim();
@@ -823,10 +726,9 @@
                 empName: empObj.name,
                 empDept: empObj.dept,
                 type: checkinType,
-                ip: userState.ip,
-                isIpValid: userState.isIpValid,
                 lat: userState.lat,
                 lng: userState.lng,
+                accuracy: userState.accuracy,
                 distance: userState.distance,
                 isGpsValid: userState.isGpsValid,
                 note: note || 'N/A'
@@ -979,16 +881,12 @@
             document.getElementById('logCountBadge').innerText = `${filtered.length} of ${attendanceLogs.length} records`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center text-slate-400">No attendance records match these filters.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">No attendance records match these filters.</td></tr>`;
                 return;
             }
 
             filtered.forEach(log => {
                 const tr = document.createElement('tr');
-                const ipBadge = log.isIpValid 
-                    ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">Authorized</span>'
-                    : '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800">Restricted</span>';
-
                 const gpsBadge = log.isGpsValid
                     ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">In-Bounds</span>'
                     : '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">Flagged Dist</span>';
@@ -997,9 +895,8 @@
                     <td class="py-3 px-3 font-mono text-slate-500">${escapeHtml(log.timestamp)}</td>
                     <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(log.empName)} <span class="text-xs font-normal text-slate-400">(${escapeHtml(log.empId)})</span></td>
                     <td class="py-3 px-3 font-semibold text-brand-700">${escapeHtml(log.type)}</td>
-                    <td class="py-3 px-3 font-mono">${escapeHtml(log.ip)}</td>
-                    <td class="py-3 px-3">${ipBadge}</td>
                     <td class="py-3 px-3 font-mono">${log.distance ? log.distance + 'm' : 'N/A'}</td>
+                    <td class="py-3 px-3 font-mono">${log.accuracy ? `±${Math.round(log.accuracy)}m` : 'N/A'}</td>
                     <td class="py-3 px-3">${gpsBadge}</td>
                     <td class="py-3 px-3 text-slate-500 italic max-w-xs truncate">${escapeHtml(log.note)}</td>
                 `;
@@ -1028,8 +925,8 @@
                 return;
             }
             const quoteCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'IP Address', 'IP Authorized', 'Distance (m)', 'GPS Valid', 'Note'];
-            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, log.ip, log.isIpValid, log.distance, log.isGpsValid, log.note]);
+            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Distance (m)', 'GPS Accuracy (m)', 'GPS Valid', 'Note'];
+            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, log.distance, log.accuracy, log.isGpsValid, log.note]);
             const csvContent = [headers, ...rows].map(row => row.map(quoteCsv).join(',')).join('\n');
             const encodedUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
             const link = document.createElement("a");
@@ -1045,17 +942,6 @@
             document.getElementById('cfgHqLat').value = appConfig.hqLat;
             document.getElementById('cfgHqLng').value = appConfig.hqLng;
             document.getElementById('cfgRadius').value = appConfig.allowedRadiusMeters;
-            document.getElementById('cfgIpList').value = appConfig.ipWhitelist.join('\n');
-            document.getElementById('cfgBypassIp').checked = appConfig.bypassIpRestriction;
-        }
-
-        function saveIpSettings(event) {
-            event.preventDefault();
-            const rawIps = document.getElementById('cfgIpList').value;
-            appConfig.ipWhitelist = rawIps.split('\n').map(i => i.trim()).filter(i => i.length > 0);
-            localStorage.setItem('geoConfig', JSON.stringify(appConfig));
-            validateUserIp();
-            showToast("IP Whitelist updated!", "success");
         }
 
         function saveHqSettings(event) {
@@ -1082,13 +968,6 @@
             showToast("Admin PIN changed successfully!", "success");
         }
 
-        function toggleBypassIp(checked) {
-            appConfig.bypassIpRestriction = checked;
-            localStorage.setItem('geoConfig', JSON.stringify(appConfig));
-            validateUserIp();
-            showToast(`Strict IP enforcement ${checked ? 'disabled' : 'enabled'}.`, "info");
-        }
-
         // --- TOAST NOTIFICATIONS ---
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
@@ -1112,6 +991,16 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="./supabase-config.js"></script>
+    <script>
+        if (window.GEOGUARD_GOOGLE_MAPS_API_KEY) {
+            const mapsScript = document.createElement('script');
+            mapsScript.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(window.GEOGUARD_GOOGLE_MAPS_API_KEY) + '&callback=initMap';
+            mapsScript.async = true;
+            mapsScript.defer = true;
+            mapsScript.onerror = () => { document.getElementById('map').innerHTML = '<div class="h-full flex items-center justify-center text-sm text-rose-600">Google Maps failed to load. Check the API key and billing/API restrictions.</div>'; };
+            document.head.appendChild(mapsScript);
+        }
+    </script>
     <script src="./cloud.js"></script>
 </body>
 </html>

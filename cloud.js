@@ -13,14 +13,11 @@
         hqLat: 23.8103,
         hqLng: 90.4125,
         allowedRadiusMeters: 500,
-        ipWhitelist: [],
-        bypassIpRestriction: false
+        maxLocationAccuracyMeters: 100
     };
     employeeDirectory = [];
     attendanceLogs = [];
     isAdminAuthenticated = false;
-    userState.ip = 'Unavailable';
-    userState.isIpValid = false;
 
     function showLoginMessage(message, isError = true) {
         const help = document.getElementById('loginHelp');
@@ -49,10 +46,9 @@
             empName: row.emp_name,
             empDept: row.emp_dept,
             type: row.type,
-            ip: row.ip,
-            isIpValid: row.is_ip_valid,
             lat: row.lat,
             lng: row.lng,
+            accuracy: row.accuracy_meters,
             distance: row.distance,
             isGpsValid: row.is_gps_valid,
             note: row.note
@@ -73,8 +69,7 @@
         appConfig.hqLat = settings.hq_lat;
         appConfig.hqLng = settings.hq_lng;
         appConfig.allowedRadiusMeters = settings.allowed_radius_meters;
-        appConfig.ipWhitelist = settings.ip_whitelist || [];
-        appConfig.bypassIpRestriction = settings.bypass_ip_restriction;
+        appConfig.maxLocationAccuracyMeters = settings.max_location_accuracy_meters || 100;
 
         updateMapGeofenceCircle();
         calculateGpsCompliance();
@@ -195,7 +190,7 @@
             openLogin();
         }
 
-        validateUserIp();
+        updateCheckInEligibility();
     };
 
     window.switchMainPortal = function(targetPortal) {
@@ -248,31 +243,18 @@
         if (error) showCloudError(error);
     };
 
-    window.validateUserIp = async function() {
-        const badge = document.getElementById('kioskIpBadge');
-        const warning = document.getElementById('ipGateWarning');
+    window.updateCheckInEligibility = function() {
         const submitButton = document.getElementById('submitBtn');
-        try {
-            const response = await fetch('https://api.ipify.org?format=json');
-            if (!response.ok) throw new Error('IP lookup failed');
-            userState.ip = (await response.json()).ip;
-            userState.isIpValid = appConfig.ipWhitelist.includes(userState.ip);
-            badge.innerText = userState.isIpValid ? 'On list' : 'Not on list';
-            badge.className = userState.isIpValid
-                ? 'text-xs font-bold text-emerald-400'
-                : 'text-xs font-bold text-amber-300';
-            warning.classList.toggle('hidden', userState.isIpValid || appConfig.bypassIpRestriction);
-        } catch {
-            userState.ip = 'Unavailable';
-            userState.isIpValid = false;
-            badge.innerText = 'Unavailable';
-            badge.className = 'text-xs font-bold text-amber-300';
-            warning.classList.remove('hidden');
-        }
-        submitButton.disabled = !state.user;
-        submitButton.classList.toggle('opacity-50', !state.user);
-        submitButton.classList.toggle('cursor-not-allowed', !state.user);
-        document.getElementById('displayIp').value = userState.ip;
+        const warning = document.getElementById('locationGateWarning');
+        const accuracy = Number(userState.accuracy);
+        const hasReliableFix = Number.isFinite(accuracy)
+            && accuracy <= appConfig.maxLocationAccuracyMeters;
+        const canCheckIn = Boolean(state.user && state.profile && userState.isGpsValid && hasReliableFix);
+
+        submitButton.disabled = !canCheckIn;
+        submitButton.classList.toggle('opacity-50', !canCheckIn);
+        submitButton.classList.toggle('cursor-not-allowed', !canCheckIn);
+        warning.classList.toggle('hidden', canCheckIn || !state.user);
     };
 
     window.requestGeolocation = function() {
@@ -282,35 +264,56 @@
             userState.accuracy = null;
             userState.distance = null;
             userState.isGpsValid = false;
-            if (userMarker) map.removeLayer(userMarker);
-            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             document.getElementById('hqDistanceLabel').innerText = 'Location is unavailable on this device.';
             document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
+            updateCheckInEligibility();
             return;
         }
 
-        navigator.geolocation.getCurrentPosition(position => {
+        state.locationWatchId = navigator.geolocation.watchPosition(position => {
             userState.lat = position.coords.latitude;
             userState.lng = position.coords.longitude;
             userState.accuracy = position.coords.accuracy;
             calculateGpsCompliance();
+            updateCheckInEligibility();
         }, () => {
             userState.lat = null;
             userState.lng = null;
             userState.accuracy = null;
             userState.distance = null;
             userState.isGpsValid = false;
-            if (userMarker) map.removeLayer(userMarker);
-            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             document.getElementById('hqDistanceLabel').innerText = 'Allow location access to record your position.';
             document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
-        }, { enableHighAccuracy: true, timeout: 10000 });
+            updateCheckInEligibility();
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
     };
 
     window.submitCheckIn = async function(event) {
         event.preventDefault();
         if (!state.user || !state.profile) {
             openLogin();
+            return;
+        }
+
+        let position;
+        try {
+            position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject,
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }));
+        } catch {
+            showToast('Could not get a fresh device location. Allow location access and try again.', 'error');
+            requestGeolocation();
+            return;
+        }
+        userState.lat = position.coords.latitude;
+        userState.lng = position.coords.longitude;
+        userState.accuracy = position.coords.accuracy;
+        calculateGpsCompliance();
+        const accuracy = Number(userState.accuracy);
+        if (!userState.isGpsValid || !Number.isFinite(accuracy)
+            || accuracy > appConfig.maxLocationAccuracyMeters) {
+            updateCheckInEligibility();
+            showToast('Check-in requires a reliable location inside the HQ geofence.', 'error');
+            requestGeolocation();
             return;
         }
 
@@ -329,10 +332,11 @@
             emp_name: employee.name,
             emp_dept: employee.dept,
             type: document.getElementById('checkinType').value,
-            ip: userState.ip,
-            is_ip_valid: userState.isIpValid,
+            ip: 'N/A',
+            is_ip_valid: true,
             lat: userState.lat,
             lng: userState.lng,
+            accuracy_meters: accuracy,
             distance: userState.distance,
             is_gps_valid: userState.isGpsValid,
             note: document.getElementById('checkinNote').value.trim() || 'N/A'
@@ -421,24 +425,6 @@
         document.getElementById('cfgHqLat').value = appConfig.hqLat;
         document.getElementById('cfgHqLng').value = appConfig.hqLng;
         document.getElementById('cfgRadius').value = appConfig.allowedRadiusMeters;
-        document.getElementById('cfgIpList').value = appConfig.ipWhitelist.join('\n');
-        document.getElementById('cfgBypassIp').checked = appConfig.bypassIpRestriction;
-    };
-
-    window.saveIpSettings = async function(event) {
-        event.preventDefault();
-        if (state.profile?.role !== 'admin') return;
-        const ipWhitelist = document.getElementById('cfgIpList').value
-            .split('\n').map(value => value.trim()).filter(Boolean);
-        const { error } = await state.client.from('app_settings')
-            .update({ ip_whitelist: ipWhitelist }).eq('id', 1);
-        if (error) {
-            showCloudError(error);
-            return;
-        }
-        appConfig.ipWhitelist = ipWhitelist;
-        validateUserIp();
-        showToast('IP notice list updated.', 'success');
     };
 
     window.saveHqSettings = async function(event) {
@@ -459,6 +445,7 @@
         appConfig.allowedRadiusMeters = values.allowed_radius_meters;
         updateMapGeofenceCircle();
         calculateGpsCompliance();
+        updateCheckInEligibility();
         showToast('Geofence settings updated.', 'success');
     };
 
@@ -478,15 +465,4 @@
         showToast('Account password changed.', 'success');
     };
 
-    window.toggleBypassIp = async function(checked) {
-        if (state.profile?.role !== 'admin') return;
-        const { error } = await state.client.from('app_settings')
-            .update({ bypass_ip_restriction: checked }).eq('id', 1);
-        if (error) {
-            showCloudError(error);
-            return;
-        }
-        appConfig.bypassIpRestriction = checked;
-        validateUserIp();
-    };
 })();

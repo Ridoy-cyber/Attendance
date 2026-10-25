@@ -45,4 +45,4 @@ This repository includes a GitHub Actions workflow that builds and publishes the
 3. In the repository, open **Settings → Pages** and set the build and deployment source to **GitHub Actions**.
 4. Open **Actions** and wait for the **Deploy attendance page** workflow to finish. GitHub will show the public URL, usually `https://Ridoy-cyber.github.io/Attendance/`.
 
-Attendance data is shared through the configured Supabase project. Browser-reported GPS and IP can be spoofed, so do not rely on them alone for payroll or security decisions.
+Attendance data is shared through the configured Supabase project. Browser-reported GPS can be spoofed, so do not rely on it alone for payroll or security decisions.
