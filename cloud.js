@@ -126,6 +126,7 @@
         }
 
         document.getElementById('signOutBtn').classList.remove('hidden');
+        document.getElementById('pinInput').value = '';
         document.getElementById('pinModal').classList.add('hidden');
         showToast(`Signed in as ${profile.role}.`, 'success');
 
@@ -213,30 +214,25 @@
         originalSwitchAdminSubTab(subTabId);
     };
 
-    window.sendSignInLink = async function(event) {
+    window.verifyAdminPin = async function(event) {
         event.preventDefault();
         if (!state.client) {
             showLoginMessage('Supabase is not configured.');
             return;
         }
-
         const button = document.getElementById('loginSubmitBtn');
         button.disabled = true;
         showLoginMessage('');
-        const redirectTo = window.location.protocol === 'file:'
-            ? 'https://ridoy-cyber.github.io/Attendance/'
-            : window.location.href.split('#')[0];
-        const { error } = await state.client.auth.signInWithOtp({
+        const { data, error } = await state.client.auth.signInWithPassword({
             email: document.getElementById('loginEmail').value.trim(),
-            options: { emailRedirectTo: redirectTo, shouldCreateUser: false }
+            password: document.getElementById('pinInput').value
         });
         button.disabled = false;
-
         if (error) {
             showLoginMessage(error.message);
             return;
         }
-        showLoginMessage('If this email has an active GeoGuard account, we sent a sign-in link. Open it to finish signing in.', false);
+        await applySignedInUser(data.user);
     };
 
     window.signOutUser = async function() {
@@ -266,13 +262,15 @@
             userState.accuracy = null;
             userState.distance = null;
             userState.isGpsValid = false;
+            if (userMarker) map.removeLayer(userMarker);
+            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             document.getElementById('hqDistanceLabel').innerText = 'Location is unavailable on this device.';
             document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
             updateCheckInEligibility();
             return;
         }
 
-        state.locationWatchId = navigator.geolocation.watchPosition(position => {
+        navigator.geolocation.getCurrentPosition(position => {
             userState.lat = position.coords.latitude;
             userState.lng = position.coords.longitude;
             userState.accuracy = position.coords.accuracy;
@@ -284,10 +282,12 @@
             userState.accuracy = null;
             userState.distance = null;
             userState.isGpsValid = false;
+            if (userMarker) map.removeLayer(userMarker);
+            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             document.getElementById('hqDistanceLabel').innerText = 'Allow location access to record your position.';
             document.getElementById('kioskGpsBadge').innerText = 'Unavailable';
             updateCheckInEligibility();
-        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+        }, { enableHighAccuracy: true, timeout: 10000 });
     };
 
     window.submitCheckIn = async function(event) {
@@ -297,19 +297,6 @@
             return;
         }
 
-        let position;
-        try {
-            position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject,
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }));
-        } catch {
-            showToast('Could not get a fresh device location. Allow location access and try again.', 'error');
-            requestGeolocation();
-            return;
-        }
-        userState.lat = position.coords.latitude;
-        userState.lng = position.coords.longitude;
-        userState.accuracy = position.coords.accuracy;
-        calculateGpsCompliance();
         const accuracy = Number(userState.accuracy);
         if (!userState.isGpsValid || !Number.isFinite(accuracy)
             || accuracy > appConfig.maxLocationAccuracyMeters) {
