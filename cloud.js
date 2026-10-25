@@ -438,6 +438,49 @@
         showToast('Geofence settings updated.', 'success');
     };
 
+    window.setHqToCurrentLocation = async function() {
+        if (state.profile?.role !== 'admin') {
+            showToast('Only an administrator can change the HQ location.', 'error');
+            return;
+        }
+        if (!navigator.geolocation) {
+            showToast('This device does not provide location access.', 'error');
+            return;
+        }
+
+        const button = document.getElementById('setHqCurrentLocationBtn');
+        button.disabled = true;
+        try {
+            const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
+                resolve, reject, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+            ));
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            const { error } = await state.client.from('app_settings')
+                .update({ hq_lat: latitude, hq_lng: longitude }).eq('id', 1);
+            if (error) {
+                showCloudError(error);
+                return;
+            }
+
+            appConfig.hqLat = latitude;
+            appConfig.hqLng = longitude;
+            userState.lat = latitude;
+            userState.lng = longitude;
+            userState.accuracy = position.coords.accuracy;
+            document.getElementById('cfgHqLat').value = latitude;
+            document.getElementById('cfgHqLng').value = longitude;
+            updateMapGeofenceCircle();
+            calculateGpsCompliance();
+            updateCheckInEligibility();
+            showToast(`HQ saved at this device location (reported accuracy ±${Math.round(position.coords.accuracy)}m).`, 'success');
+        } catch {
+            showToast('Could not read this device location. Allow precise location and try again.', 'error');
+        } finally {
+            button.disabled = false;
+        }
+    };
+
     window.changeAdminPin = async function(event) {
         event.preventDefault();
         const password = document.getElementById('cfgNewPin').value;

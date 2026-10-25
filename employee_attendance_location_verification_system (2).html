@@ -398,6 +398,10 @@
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Allowed Radius Distance (Meters)</label>
                             <input type="number" id="cfgRadius" required class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
                         </div>
+                        <p class="text-xs text-slate-500">Stand at the exact office location before setting the shared HQ point.</p>
+                        <button type="button" id="setHqCurrentLocationBtn" onclick="setHqToCurrentLocation()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow transition-all">
+                            <i class="fa-solid fa-location-crosshairs mr-1"></i> Lock HQ to This Device Location
+                        </button>
                         <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow transition-all">
                             Update Geofence Coordinates
                         </button>
