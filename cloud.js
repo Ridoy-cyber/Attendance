@@ -7,15 +7,11 @@
         profile: null,
         pendingPortal: 'kiosk',
         logRefreshTimer: null,
-        locationRulesAvailable: true,
-        employeeLocationFieldsAvailable: true
+        locationRulesAvailable: false,
+        employeeLocationFieldsAvailable: false
     };
 
     appConfig = {
-        hqLat: 23.8103,
-        hqLng: 90.4125,
-        allowedRadiusMeters: 500,
-        maxLocationAccuracyMeters: 200,
         locationRules: []
     };
     employeeDirectory = [];
@@ -80,41 +76,9 @@
     }
 
     async function loadSharedData() {
-        let [employeeResult, settingsResult, locationRulesResult] = await Promise.all([
-            state.client.from('employees').select('id, name, dept, type, status, location_lat, location_lng').order('name'),
-            state.client.from('app_settings').select('*').eq('id', 1).single(),
-            state.client.from('location_rules').select('*').order('created_at', { ascending: false })
-        ]);
-
-        const missingEmployeeLocationColumns = ['PGRST204', '42703'].includes(employeeResult.error?.code);
-        if (missingEmployeeLocationColumns) {
-            employeeResult = await state.client.from('employees').select('id, name, dept, type, status').order('name');
-        }
-
+        const employeeResult = await state.client.from('employees').select('id, name, dept, type, status').order('name');
         if (employeeResult.error) throw employeeResult.error;
-        if (settingsResult.error) throw settingsResult.error;
-        setEmployeeLocationAvailability(!missingEmployeeLocationColumns);
-        if (missingEmployeeLocationColumns && state.profile.role === 'admin') {
-            showToast('Run the latest supabase/schema.sql to enable employee coordinates.', 'error');
-        }
-        const missingLocationRulesTable = ['PGRST205', '42P01'].includes(locationRulesResult.error?.code);
-        if (locationRulesResult.error && !missingLocationRulesTable) throw locationRulesResult.error;
-        setLocationRulesAvailability(!missingLocationRulesTable);
-        if (missingLocationRulesTable && state.profile.role === 'admin') {
-            showToast('Apply the latest supabase/schema.sql to enable location rules.', 'error');
-        }
-
         employeeDirectory = employeeResult.data;
-        const settings = settingsResult.data;
-        appConfig.hqLat = settings.hq_lat;
-        appConfig.hqLng = settings.hq_lng;
-        appConfig.allowedRadiusMeters = settings.allowed_radius_meters;
-        appConfig.maxLocationAccuracyMeters = settings.max_location_accuracy_meters || 200;
-        appConfig.locationRules = locationRulesResult.data || [];
-
-        updateMapGeofenceCircle();
-        calculateGpsCompliance();
-        loadAdminSettingsIntoUI();
         populateKioskEmployeeSelect();
 
         const employeeSelect = document.getElementById('empSelect');
@@ -136,7 +100,6 @@
             attendanceLogs = data.map(mapLog);
             renderDirectoryTable();
             renderLogsTable();
-            renderLocationRules();
         }
     }
 
@@ -205,8 +168,6 @@
 
     window.onload = async function() {
         initClock();
-        initMap();
-        requestGeolocation();
 
         const projectUrl = window.GEOGUARD_SUPABASE_URL;
         const publicKey = window.GEOGUARD_SUPABASE_ANON_KEY;
@@ -297,16 +258,11 @@
 
     window.updateCheckInEligibility = function() {
         const submitButton = document.getElementById('submitBtn');
-        const warning = document.getElementById('locationGateWarning');
-        const accuracy = Number(userState.accuracy);
-        const hasReliableFix = Number.isFinite(accuracy)
-            && accuracy <= appConfig.maxLocationAccuracyMeters;
-        const canCheckIn = Boolean(state.user && state.profile && userState.isGpsValid && hasReliableFix);
+        const canCheckIn = Boolean(state.user && state.profile);
 
         submitButton.disabled = !canCheckIn;
         submitButton.classList.toggle('opacity-50', !canCheckIn);
         submitButton.classList.toggle('cursor-not-allowed', !canCheckIn);
-        warning.classList.toggle('hidden', canCheckIn || !state.user);
     };
 
     window.requestGeolocation = function() {
@@ -351,15 +307,6 @@
             return;
         }
 
-        const accuracy = Number(userState.accuracy);
-        if (!userState.isGpsValid || !Number.isFinite(accuracy)
-            || accuracy > appConfig.maxLocationAccuracyMeters) {
-            updateCheckInEligibility();
-            showToast('Check-in requires a reliable location inside the assigned site, HQ, or an approved area, and outside blocked areas.', 'error');
-            requestGeolocation();
-            return;
-        }
-
         const empId = state.profile.role === 'employee'
             ? state.profile.employee_id
             : document.getElementById('empSelect').value;
@@ -377,11 +324,7 @@
             type: document.getElementById('checkinType').value,
             ip: 'N/A',
             is_ip_valid: true,
-            lat: userState.lat,
-            lng: userState.lng,
-            accuracy_meters: accuracy,
-            distance: userState.distance,
-            is_gps_valid: userState.isGpsValid,
+            is_gps_valid: true,
             note: document.getElementById('checkinNote').value.trim() || 'N/A'
         };
         const { error } = await state.client.from('attendance_logs').insert(entry);
@@ -421,21 +364,6 @@
             type: document.getElementById('dirEmpType').value,
             status: document.getElementById('dirEmpStatus').value
         };
-        if (state.employeeLocationFieldsAvailable) {
-            const lat = document.getElementById('dirEmpLat').value.trim();
-            const lng = document.getElementById('dirEmpLng').value.trim();
-            if (Boolean(lat) !== Boolean(lng)) {
-                showToast('Enter both latitude and longitude, or leave both blank.', 'error');
-                return;
-            }
-            record.location_lat = lat === '' ? null : Number(lat);
-            record.location_lng = lng === '' ? null : Number(lng);
-            if (record.location_lat !== null && (!Number.isFinite(record.location_lat) || record.location_lat < -90 || record.location_lat > 90
-                || !Number.isFinite(record.location_lng) || record.location_lng < -180 || record.location_lng > 180)) {
-                showToast('Enter valid latitude and longitude coordinates.', 'error');
-                return;
-            }
-        }
         const request = editIndex === -1
             ? state.client.from('employees').insert(record)
             : state.client.from('employees').update(record).eq('id', employeeDirectory[editIndex].id);

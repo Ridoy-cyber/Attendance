@@ -32,6 +32,15 @@
     </script>
     <style>
         #map { height: 280px; width: 100%; border-radius: 0.75rem; z-index: 1; }
+        #adminTabBtn-locations, #adminSub-locations, #locationGateWarning, #map,
+        #map + div, #kioskGpsBadge, #dirEmpLat, #dirEmpLng, #employeeLocationSetupWarning,
+        #useCurrentEmployeeLocationBtn, #locationRuleForm,
+        #viewKiosk > .grid > div:nth-child(2),
+        #adminSub-directory .space-y-2:has(#dirEmpLat) { display: none !important; }
+        #adminSub-directory table th:nth-child(4), #adminSub-directory table td:nth-child(4),
+        #adminSub-logs table th:nth-child(4), #adminSub-logs table th:nth-child(5), #adminSub-logs table th:nth-child(6),
+        #adminSub-logs table td:nth-child(4), #adminSub-logs table td:nth-child(5), #adminSub-logs table td:nth-child(6),
+        #adminSub-settings > div > div:first-child { display: none !important; }
         .admin-nav.active {
             background-color: #0284c7;
             color: #ffffff;
@@ -52,7 +61,7 @@
                     </div>
                     <div>
                         <h1 class="font-bold text-lg leading-tight tracking-wide">GeoGuard Attendance</h1>
-                        <p class="text-xs text-slate-400">Shared Attendance & Location Verification</p>
+                        <p class="text-xs text-slate-400">Shared Attendance</p>
                     </div>
                 </div>
 
@@ -97,24 +106,17 @@
                     <span>Self-Service Check-In Portal</span>
                 </div>
                 <h2 class="text-2xl font-black tracking-tight">Employee Attendance Terminal</h2>
-                <p class="text-xs text-brand-100 max-w-xl">Sign in with your employee account to record attendance and location.</p>
+                <p class="text-xs text-brand-100 max-w-xl">Sign in with your employee account to record attendance.</p>
             </div>
             
-            <!-- Quick Status Summary -->
-            <div class="flex items-center gap-3">
-                <div class="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-center">
-                    <span class="block text-[10px] uppercase font-bold text-brand-200">Geofence</span>
-                    <span id="kioskGpsBadge" class="text-xs font-bold text-white">Pending</span>
-                </div>
-            </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <!-- Form Section -->
-            <div class="lg:col-span-6 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-5">
+            <div class="lg:col-span-12 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-5">
                 <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
                     <h3 class="text-base font-bold text-slate-900">Mark Presence</h3>
-                    <span class="text-xs text-slate-500"><i class="fa-solid fa-clock text-brand-600 mr-1"></i> Real-time Verification</span>
+                    <span class="text-xs text-slate-500"><i class="fa-solid fa-clock text-brand-600 mr-1"></i> Attendance</span>
                 </div>
 
                 <form id="attendanceForm" onsubmit="submitCheckIn(event)" class="space-y-4">
@@ -163,7 +165,6 @@
                         <i class="fa-solid fa-fingerprint text-lg"></i>
                         <span>Confirm Attendance Entry</span>
                     </button>
-                    <p class="text-[11px] text-slate-500">Check-ins are accepted only when the reported location and accuracy fit inside the HQ geofence.</p>
                 </form>
             </div>
 
@@ -585,8 +586,6 @@
         // --- INIT ON LOAD ---
         window.onload = function() {
             initClock();
-            initMap();
-            requestGeolocation();
             populateKioskEmployeeSelect();
             loadAdminSettingsIntoUI();
         };
@@ -1105,8 +1104,8 @@
                 return;
             }
             const quoteCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Distance (m)', 'GPS Accuracy (m)', 'GPS Valid', 'Note'];
-            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, log.distance, log.accuracy, log.isGpsValid, log.note]);
+            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Note'];
+            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, log.note]);
             const csvContent = [headers, ...rows].map(row => row.map(quoteCsv).join(',')).join('\n');
             const encodedUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
             const link = document.createElement("a");
@@ -1118,24 +1117,9 @@
         }
 
         // --- ADMIN SETTINGS MANAGMENT ---
-        function loadAdminSettingsIntoUI() {
-            document.getElementById('cfgHqLat').value = appConfig.hqLat;
-            document.getElementById('cfgHqLng').value = appConfig.hqLng;
-            document.getElementById('cfgRadius').value = appConfig.allowedRadiusMeters;
-            document.getElementById('cfgMaxAccuracy').value = appConfig.maxLocationAccuracyMeters;
-        }
+        function loadAdminSettingsIntoUI() {}
 
-        function saveHqSettings(event) {
-            event.preventDefault();
-            appConfig.hqLat = parseFloat(document.getElementById('cfgHqLat').value);
-            appConfig.hqLng = parseFloat(document.getElementById('cfgHqLng').value);
-            appConfig.allowedRadiusMeters = parseInt(document.getElementById('cfgRadius').value);
-            appConfig.maxLocationAccuracyMeters = parseInt(document.getElementById('cfgMaxAccuracy').value);
-            localStorage.setItem('geoConfig', JSON.stringify(appConfig));
-            updateMapGeofenceCircle();
-            calculateGpsCompliance();
-            showToast("Geofence settings updated!", "success");
-        }
+        function saveHqSettings(event) { event.preventDefault(); }
 
         function changeAdminPin(event) {
             event.preventDefault();

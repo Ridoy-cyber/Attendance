@@ -120,30 +120,14 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-    location_settings public.app_settings%rowtype;
-    latitude_delta double precision;
-    longitude_delta double precision;
-    haversine double precision;
-    computed_distance double precision;
-    blocked_by_rule boolean;
-    approved_by_rule boolean;
-    employee_lat double precision;
-    employee_lng double precision;
-    geofence_lat double precision;
-    geofence_lng double precision;
 begin
-    select name, dept, location_lat, location_lng
-    into new.emp_name, new.emp_dept, employee_lat, employee_lng
+    select name, dept
+    into new.emp_name, new.emp_dept
     from public.employees
     where id = new.emp_id and status = 'Active';
 
     if not found then
         raise exception 'Attendance can only be recorded for an active employee';
-    end if;
-
-    if (employee_lat is null) <> (employee_lng is null) then
-        raise exception 'Employee location must include both latitude and longitude';
     end if;
 
     if not (select public.is_admin()) then
@@ -157,73 +141,13 @@ begin
         end if;
     end if;
 
-    select * into location_settings
-    from public.app_settings
-    where id = 1;
-
-    if not found then
-        raise exception 'HQ geofence settings are not configured';
-    end if;
-
-    geofence_lat := coalesce(employee_lat, location_settings.hq_lat);
-    geofence_lng := coalesce(employee_lng, location_settings.hq_lng);
-
-    if new.lat is null or new.lng is null
-        or new.lat < -90 or new.lat > 90
-        or new.lng < -180 or new.lng > 180
-        or new.accuracy_meters is null
-        or new.accuracy_meters < 0
-        or new.accuracy_meters > location_settings.max_location_accuracy_meters then
-        raise exception 'A reliable device location is required to check in';
-    end if;
-
-    latitude_delta := radians(new.lat - geofence_lat);
-    longitude_delta := radians(new.lng - geofence_lng);
-    haversine := sin(latitude_delta / 2) * sin(latitude_delta / 2)
-        + cos(radians(geofence_lat)) * cos(radians(new.lat))
-        * sin(longitude_delta / 2) * sin(longitude_delta / 2);
-    computed_distance := 2 * 6371000 * asin(sqrt(least(1, haversine)));
-
-    new.distance := round(computed_distance)::integer;
-    select exists (
-        select 1
-        from public.location_rules rule
-        where rule.is_active
-          and rule.decision = 'block'
-          and 2 * 6371000 * asin(sqrt(least(1,
-              sin(radians(new.lat - rule.lat) / 2) * sin(radians(new.lat - rule.lat) / 2)
-              + cos(radians(rule.lat)) * cos(radians(new.lat))
-              * sin(radians(new.lng - rule.lng) / 2) * sin(radians(new.lng - rule.lng) / 2)
-          ))) <= rule.radius_meters + new.accuracy_meters
-    ) into blocked_by_rule;
-
-    if blocked_by_rule then
-        raise exception 'Check-in is blocked at this location by an administrator';
-    end if;
-
-    new.is_gps_valid := computed_distance + new.accuracy_meters
-        <= location_settings.allowed_radius_meters;
-
-    if not new.is_gps_valid then
-        select exists (
-            select 1
-            from public.location_rules rule
-            where rule.is_active
-              and rule.decision = 'approve'
-              and 2 * 6371000 * asin(sqrt(least(1,
-                  sin(radians(new.lat - rule.lat) / 2) * sin(radians(new.lat - rule.lat) / 2)
-                  + cos(radians(rule.lat)) * cos(radians(new.lat))
-                  * sin(radians(new.lng - rule.lng) / 2) * sin(radians(new.lng - rule.lng) / 2)
-              ))) + new.accuracy_meters <= rule.radius_meters
-        ) into approved_by_rule;
-
-        if not approved_by_rule then
-            raise exception 'Check-in is only allowed within the assigned employee geofence or an approved location';
-        end if;
-
-        new.is_gps_valid := true;
-    end if;
-
+    -- Keep legacy location columns nullable for old records, but do not collect
+    -- or validate location for new attendance entries.
+    new.lat := null;
+    new.lng := null;
+    new.accuracy_meters := null;
+    new.distance := null;
+    new.is_gps_valid := true;
     return new;
 end;
 $$;
