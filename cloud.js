@@ -15,7 +15,7 @@
         hqLat: 23.8103,
         hqLng: 90.4125,
         allowedRadiusMeters: 500,
-        maxLocationAccuracyMeters: 100,
+        maxLocationAccuracyMeters: 200,
         locationRules: []
     };
     employeeDirectory = [];
@@ -109,7 +109,7 @@
         appConfig.hqLat = settings.hq_lat;
         appConfig.hqLng = settings.hq_lng;
         appConfig.allowedRadiusMeters = settings.allowed_radius_meters;
-        appConfig.maxLocationAccuracyMeters = settings.max_location_accuracy_meters || 100;
+        appConfig.maxLocationAccuracyMeters = settings.max_location_accuracy_meters || 200;
         appConfig.locationRules = locationRulesResult.data || [];
 
         updateMapGeofenceCircle();
@@ -604,6 +604,7 @@
         document.getElementById('cfgHqLat').value = appConfig.hqLat;
         document.getElementById('cfgHqLng').value = appConfig.hqLng;
         document.getElementById('cfgRadius').value = appConfig.allowedRadiusMeters;
+        document.getElementById('cfgMaxAccuracy').value = appConfig.maxLocationAccuracyMeters;
     };
 
     window.saveHqSettings = async function(event) {
@@ -612,8 +613,14 @@
         const values = {
             hq_lat: Number(document.getElementById('cfgHqLat').value),
             hq_lng: Number(document.getElementById('cfgHqLng').value),
-            allowed_radius_meters: Number(document.getElementById('cfgRadius').value)
+            allowed_radius_meters: Number(document.getElementById('cfgRadius').value),
+            max_location_accuracy_meters: Number(document.getElementById('cfgMaxAccuracy').value)
         };
+        if (!Number.isFinite(values.max_location_accuracy_meters)
+            || values.max_location_accuracy_meters < 1 || values.max_location_accuracy_meters > 5000) {
+            showToast('Maximum GPS accuracy must be between 1 and 5000 meters.', 'error');
+            return;
+        }
         const { error } = await state.client.from('app_settings').update(values).eq('id', 1);
         if (error) {
             showCloudError(error);
@@ -622,6 +629,7 @@
         appConfig.hqLat = values.hq_lat;
         appConfig.hqLng = values.hq_lng;
         appConfig.allowedRadiusMeters = values.allowed_radius_meters;
+        appConfig.maxLocationAccuracyMeters = values.max_location_accuracy_meters;
         updateMapGeofenceCircle();
         calculateGpsCompliance();
         updateCheckInEligibility();

@@ -485,6 +485,11 @@
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Allowed Radius Distance (Meters)</label>
                             <input type="number" id="cfgRadius" required class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
                         </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Maximum GPS Accuracy (Meters)</label>
+                            <input type="number" id="cfgMaxAccuracy" min="1" max="5000" required class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
+                            <p class="mt-1 text-[11px] text-slate-500">Attendance still requires the reported accuracy circle to fit inside the selected geofence.</p>
+                        </div>
                         <p class="text-xs text-slate-500">Stand at the exact office location before setting the shared HQ point.</p>
                         <button type="button" id="setHqCurrentLocationBtn" onclick="setHqToCurrentLocation()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow transition-all">
                             <i class="fa-solid fa-location-crosshairs mr-1"></i> Lock HQ to This Device Location
@@ -552,7 +557,7 @@
             hqLat: 23.8103, // Default HQ (Dhaka)
             hqLng: 90.4125,
             allowedRadiusMeters: 500,
-            maxLocationAccuracyMeters: 100,
+            maxLocationAccuracyMeters: 200,
             locationRules: []
         });
 
@@ -1117,6 +1122,7 @@
             document.getElementById('cfgHqLat').value = appConfig.hqLat;
             document.getElementById('cfgHqLng').value = appConfig.hqLng;
             document.getElementById('cfgRadius').value = appConfig.allowedRadiusMeters;
+            document.getElementById('cfgMaxAccuracy').value = appConfig.maxLocationAccuracyMeters;
         }
 
         function saveHqSettings(event) {
@@ -1124,6 +1130,7 @@
             appConfig.hqLat = parseFloat(document.getElementById('cfgHqLat').value);
             appConfig.hqLng = parseFloat(document.getElementById('cfgHqLng').value);
             appConfig.allowedRadiusMeters = parseInt(document.getElementById('cfgRadius').value);
+            appConfig.maxLocationAccuracyMeters = parseInt(document.getElementById('cfgMaxAccuracy').value);
             localStorage.setItem('geoConfig', JSON.stringify(appConfig));
             updateMapGeofenceCircle();
             calculateGpsCompliance();

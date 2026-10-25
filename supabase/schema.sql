@@ -21,7 +21,7 @@ create table if not exists public.app_settings (
     hq_lat double precision not null default 23.8103,
     hq_lng double precision not null default 90.4125,
     allowed_radius_meters integer not null default 500 check (allowed_radius_meters > 0),
-    max_location_accuracy_meters integer not null default 100 check (max_location_accuracy_meters > 0),
+    max_location_accuracy_meters integer not null default 200 check (max_location_accuracy_meters > 0),
     ip_whitelist text[] not null default array['192.168.1.1', '127.0.0.1', '10.0.0.15', '203.0.113.42'],
     bypass_ip_restriction boolean not null default false,
     updated_at timestamptz not null default now()
@@ -57,7 +57,9 @@ create table if not exists public.location_rules (
 );
 
 alter table public.app_settings
-    add column if not exists max_location_accuracy_meters integer not null default 100;
+    add column if not exists max_location_accuracy_meters integer not null default 200;
+alter table public.app_settings
+    alter column max_location_accuracy_meters set default 200;
 alter table public.employees
     add column if not exists location_lat double precision,
     add column if not exists location_lng double precision;
@@ -241,6 +243,9 @@ create trigger before_attendance_log_set_employee
     for each row execute procedure public.set_attendance_employee_details();
 
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
+update public.app_settings
+set max_location_accuracy_meters = 200
+where id = 1 and max_location_accuracy_meters = 100;
 
 alter table public.employees enable row level security;
 alter table public.profiles enable row level security;
