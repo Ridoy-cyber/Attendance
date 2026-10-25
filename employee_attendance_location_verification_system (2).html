@@ -155,7 +155,7 @@
                     <div id="locationGateWarning" class="hidden p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start space-x-2.5">
                         <i class="fa-solid fa-triangle-exclamation text-rose-600 text-base mt-0.5"></i>
                         <div>
-                            <span class="font-bold">Check-in blocked:</span> Allow precise location and move within the HQ geofence or an admin-approved area. Admin-blocked areas cannot check in.
+                            <span class="font-bold">Check-in blocked:</span> Allow precise location and move within the employee’s assigned site, HQ, or an admin-approved area. Admin-blocked areas cannot check in.
                         </div>
                     </div>
 
@@ -190,7 +190,7 @@
                         </div>
                         <div class="flex items-center space-x-2 text-slate-600">
                             <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white shadow-sm"></span>
-                            <span>HQ Geofence Zone</span>
+                            <span id="geofenceZoneLegend">HQ Geofence Zone</span>
                         </div>
                         <div class="flex items-center space-x-2 text-slate-600">
                             <span class="w-3 h-3 rounded-full bg-blue-100 inline-block border border-blue-500"></span>
@@ -275,6 +275,21 @@
                             <input type="text" id="dirEmpDept" placeholder="Engineering / HR" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border focus:ring-brand-500">
                         </div>
 
+                        <div class="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Employee Assigned Location</label>
+                                <p class="text-[11px] text-slate-500">Optional: use a fixed site for this employee instead of HQ. It uses the configured geofence radius.</p>
+                            </div>
+                            <p id="employeeLocationSetupWarning" class="hidden p-2 rounded-lg bg-amber-50 text-[11px] text-amber-900">Run the latest supabase/schema.sql to enable employee coordinates.</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <input type="number" step="any" min="-90" max="90" id="dirEmpLat" placeholder="Latitude" class="w-full rounded-xl border-slate-300 text-xs p-2 border">
+                                <input type="number" step="any" min="-180" max="180" id="dirEmpLng" placeholder="Longitude" class="w-full rounded-xl border-slate-300 text-xs p-2 border">
+                            </div>
+                            <button type="button" id="useCurrentEmployeeLocationBtn" onclick="useCurrentLocationForEmployee()" class="w-full py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-300">
+                                <i class="fa-solid fa-location-crosshairs mr-1"></i> Use This Device Location
+                            </button>
+                        </div>
+
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Type</label>
@@ -322,6 +337,7 @@
                                     <th class="py-3 px-3">ID</th>
                                     <th class="py-3 px-3">Name</th>
                                     <th class="py-3 px-3">Department</th>
+                                    <th class="py-3 px-3">Assigned Location</th>
                                     <th class="py-3 px-3">Type</th>
                                     <th class="py-3 px-3">Status</th>
                                     <th class="py-3 px-3 text-right">Actions</th>
@@ -655,14 +671,28 @@
             updateMapGeofenceCircle();
         }
 
+        function getCurrentGeofenceTarget() {
+            const selectedEmployeeId = document.getElementById('empSelect')?.value;
+            const employee = employeeDirectory.find(item => item.id === selectedEmployeeId);
+            const lat = Number(employee?.location_lat);
+            const lng = Number(employee?.location_lng);
+            if (employee && employee.location_lat != null && employee.location_lng != null
+                && Number.isFinite(lat) && Number.isFinite(lng)) {
+                return { lat, lng, name: `${employee.name}'s assigned location` };
+            }
+            return { lat: Number(appConfig.hqLat), lng: Number(appConfig.hqLng), name: 'HQ' };
+        }
+
         function updateMapGeofenceCircle() {
             if (hqCircle) map.removeLayer(hqCircle);
-            const hqPosition = [Number(appConfig.hqLat), Number(appConfig.hqLng)];
-            hqCircle = L.circle(hqPosition, {
+            const geofence = getCurrentGeofenceTarget();
+            const center = [geofence.lat, geofence.lng];
+            hqCircle = L.circle(center, {
                 color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2,
                 radius: appConfig.allowedRadiusMeters
-            }).addTo(map).bindPopup('Corporate HQ Geofence Radius');
-            map.setView(hqPosition, 14);
+            }).addTo(map).bindPopup(`${escapeHtml(geofence.name)} Geofence`);
+            map.setView(center, 14);
+            document.getElementById('geofenceZoneLegend').innerText = `${geofence.name} Geofence Zone`;
             locationRuleCircles.forEach(circle => map.removeLayer(circle));
             locationRuleCircles = (appConfig.locationRules || []).filter(rule => rule.is_active).map(rule => {
                 const approved = rule.decision === 'approve';
@@ -710,7 +740,8 @@
         function calculateGpsCompliance() {
             if (userState.lat === null || userState.lng === null) return;
 
-            const dist = getDistanceMeters(userState.lat, userState.lng, appConfig.hqLat, appConfig.hqLng);
+            const geofence = getCurrentGeofenceTarget();
+            const dist = getDistanceMeters(userState.lat, userState.lng, geofence.lat, geofence.lng);
             userState.distance = Math.round(dist);
             const accuracy = Math.max(0, Number(userState.accuracy) || 0);
             const definitelyInside = dist + accuracy <= appConfig.allowedRadiusMeters;
@@ -725,7 +756,7 @@
             userState.isGpsValid = locationAllowed && meetsAccuracyRequirement;
 
             // UI updates
-            document.getElementById('hqDistanceLabel').innerText = `Estimated distance to HQ: ${userState.distance}m (accuracy ±${Math.round(accuracy)}m)`;
+            document.getElementById('hqDistanceLabel').innerText = `Estimated distance to ${geofence.name}: ${userState.distance}m (accuracy ±${Math.round(accuracy)}m)`;
             const badge = document.getElementById('kioskGpsBadge');
             if (!meetsAccuracyRequirement) {
                 badge.innerText = `Low accuracy (±${Math.round(accuracy)}m)`;
@@ -751,7 +782,7 @@
             if (userMarker) map.removeLayer(userMarker);
             if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
             userMarker = L.marker([userState.lat, userState.lng]).addTo(map)
-                .bindPopup(`<b>Estimated Position</b><br>Distance to HQ: ${userState.distance}m<br>Accuracy: &plusmn;${Math.round(accuracy)}m`);
+                .bindPopup(`<b>Estimated Position</b><br>Distance to ${escapeHtml(geofence.name)}: ${userState.distance}m<br>Accuracy: &plusmn;${Math.round(accuracy)}m`);
             userAccuracyCircle = L.circle([userState.lat, userState.lng], {
                 color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.12,
                 weight: 1, radius: accuracy
@@ -790,6 +821,9 @@
             if (!empId) {
                 document.getElementById('empId').value = '';
                 document.getElementById('empDept').value = '';
+                updateMapGeofenceCircle();
+                calculateGpsCompliance();
+                updateCheckInEligibility();
                 return;
             }
             const emp = employeeDirectory.find(e => e.id === empId);
@@ -797,6 +831,9 @@
                 document.getElementById('empId').value = emp.id;
                 document.getElementById('empDept').value = emp.dept;
             }
+            updateMapGeofenceCircle();
+            calculateGpsCompliance();
+            updateCheckInEligibility();
         }
 
         function submitCheckIn(event) {
@@ -891,7 +928,7 @@
             document.getElementById('dirCountBadge').innerText = `${employeeDirectory.length} Total`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-400">No employees found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">No employees found.</td></tr>`;
                 return;
             }
 
@@ -905,6 +942,7 @@
                     <td class="py-3 px-3 font-mono font-bold text-slate-800">${escapeHtml(emp.id)}</td>
                     <td class="py-3 px-3 font-semibold text-slate-900">${escapeHtml(emp.name)}</td>
                     <td class="py-3 px-3">${escapeHtml(emp.dept)}</td>
+                    <td class="py-3 px-3">${emp.location_lat != null && emp.location_lng != null ? `${Number(emp.location_lat).toFixed(5)}, ${Number(emp.location_lng).toFixed(5)}` : '<span class="text-slate-400">HQ default</span>'}</td>
                     <td class="py-3 px-3">${escapeHtml(emp.type)}</td>
                     <td class="py-3 px-3">${statusBadge}</td>
                     <td class="py-3 px-3 text-right space-x-2">
@@ -927,8 +965,21 @@
             const dept = document.getElementById('dirEmpDept').value.trim() || 'General';
             const type = document.getElementById('dirEmpType').value;
             const status = document.getElementById('dirEmpStatus').value;
+            const latValue = document.getElementById('dirEmpLat').value.trim();
+            const lngValue = document.getElementById('dirEmpLng').value.trim();
+            if (Boolean(latValue) !== Boolean(lngValue)) {
+                showToast('Enter both latitude and longitude, or leave both blank.', 'error');
+                return;
+            }
+            const location_lat = latValue === '' ? null : Number(latValue);
+            const location_lng = lngValue === '' ? null : Number(lngValue);
+            if (location_lat !== null && (!Number.isFinite(location_lat) || location_lat < -90 || location_lat > 90
+                || !Number.isFinite(location_lng) || location_lng < -180 || location_lng > 180)) {
+                showToast('Enter valid latitude and longitude coordinates.', 'error');
+                return;
+            }
 
-            const record = { id, name, dept, type, status };
+            const record = { id, name, dept, type, status, location_lat, location_lng };
 
             if (editIndex === -1) {
                 if (employeeDirectory.some(e => e.id === id)) {
@@ -956,6 +1007,8 @@
             document.getElementById('dirEmpDept').value = emp.dept;
             document.getElementById('dirEmpType').value = emp.type;
             document.getElementById('dirEmpStatus').value = emp.status;
+            document.getElementById('dirEmpLat').value = emp.location_lat ?? '';
+            document.getElementById('dirEmpLng').value = emp.location_lng ?? '';
 
             document.getElementById('directoryFormTitle').innerText = "Edit Employee Profile";
             document.getElementById('dirSaveBtn').innerHTML = `<i class="fa-solid fa-floppy-disk"></i> <span>Update Employee</span>`;

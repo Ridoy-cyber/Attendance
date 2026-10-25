@@ -4,6 +4,8 @@ create table if not exists public.employees (
     dept text not null default 'General',
     type text not null default 'Full-Time',
     status text not null default 'Active' check (status in ('Active', 'Inactive')),
+    location_lat double precision check (location_lat between -90 and 90),
+    location_lng double precision check (location_lng between -180 and 180),
     created_at timestamptz not null default now()
 );
 
@@ -56,6 +58,16 @@ create table if not exists public.location_rules (
 
 alter table public.app_settings
     add column if not exists max_location_accuracy_meters integer not null default 100;
+alter table public.employees
+    add column if not exists location_lat double precision,
+    add column if not exists location_lng double precision;
+alter table public.employees
+    drop constraint if exists employees_location_coordinates_valid;
+alter table public.employees
+    add constraint employees_location_coordinates_valid check (
+        (location_lat is null and location_lng is null)
+        or (location_lat between -90 and 90 and location_lng between -180 and 180)
+    );
 alter table public.attendance_logs
     add column if not exists accuracy_meters double precision;
 alter table public.attendance_logs
@@ -114,13 +126,22 @@ declare
     computed_distance double precision;
     blocked_by_rule boolean;
     approved_by_rule boolean;
+    employee_lat double precision;
+    employee_lng double precision;
+    geofence_lat double precision;
+    geofence_lng double precision;
 begin
-    select name, dept into new.emp_name, new.emp_dept
+    select name, dept, location_lat, location_lng
+    into new.emp_name, new.emp_dept, employee_lat, employee_lng
     from public.employees
     where id = new.emp_id and status = 'Active';
 
     if not found then
         raise exception 'Attendance can only be recorded for an active employee';
+    end if;
+
+    if (employee_lat is null) <> (employee_lng is null) then
+        raise exception 'Employee location must include both latitude and longitude';
     end if;
 
     if not (select public.is_admin()) then
@@ -142,6 +163,9 @@ begin
         raise exception 'HQ geofence settings are not configured';
     end if;
 
+    geofence_lat := coalesce(employee_lat, location_settings.hq_lat);
+    geofence_lng := coalesce(employee_lng, location_settings.hq_lng);
+
     if new.lat is null or new.lng is null
         or new.lat < -90 or new.lat > 90
         or new.lng < -180 or new.lng > 180
@@ -151,10 +175,10 @@ begin
         raise exception 'A reliable device location is required to check in';
     end if;
 
-    latitude_delta := radians(new.lat - location_settings.hq_lat);
-    longitude_delta := radians(new.lng - location_settings.hq_lng);
+    latitude_delta := radians(new.lat - geofence_lat);
+    longitude_delta := radians(new.lng - geofence_lng);
     haversine := sin(latitude_delta / 2) * sin(latitude_delta / 2)
-        + cos(radians(location_settings.hq_lat)) * cos(radians(new.lat))
+        + cos(radians(geofence_lat)) * cos(radians(new.lat))
         * sin(longitude_delta / 2) * sin(longitude_delta / 2);
     computed_distance := 2 * 6371000 * asin(sqrt(least(1, haversine)));
 
@@ -192,7 +216,7 @@ begin
         ) into approved_by_rule;
 
         if not approved_by_rule then
-            raise exception 'Check-in is only allowed within the HQ geofence or an approved location';
+            raise exception 'Check-in is only allowed within the assigned employee geofence or an approved location';
         end if;
 
         new.is_gps_valid := true;

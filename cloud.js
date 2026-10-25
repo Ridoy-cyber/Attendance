@@ -7,7 +7,8 @@
         profile: null,
         pendingPortal: 'kiosk',
         logRefreshTimer: null,
-        locationRulesAvailable: true
+        locationRulesAvailable: true,
+        employeeLocationFieldsAvailable: true
     };
 
     appConfig = {
@@ -51,6 +52,16 @@
             });
     }
 
+    function setEmployeeLocationAvailability(available) {
+        state.employeeLocationFieldsAvailable = available;
+        const warning = document.getElementById('employeeLocationSetupWarning');
+        if (warning) warning.classList.toggle('hidden', available);
+        ['dirEmpLat', 'dirEmpLng', 'useCurrentEmployeeLocationBtn'].forEach(id => {
+            const control = document.getElementById(id);
+            if (control) control.disabled = !available;
+        });
+    }
+
     function mapLog(row) {
         return {
             timestamp: new Date(row.created_at).toLocaleString(),
@@ -69,14 +80,23 @@
     }
 
     async function loadSharedData() {
-        const [employeeResult, settingsResult, locationRulesResult] = await Promise.all([
-            state.client.from('employees').select('id, name, dept, type, status').order('name'),
+        let [employeeResult, settingsResult, locationRulesResult] = await Promise.all([
+            state.client.from('employees').select('id, name, dept, type, status, location_lat, location_lng').order('name'),
             state.client.from('app_settings').select('*').eq('id', 1).single(),
             state.client.from('location_rules').select('*').order('created_at', { ascending: false })
         ]);
 
+        const missingEmployeeLocationColumns = ['PGRST204', '42703'].includes(employeeResult.error?.code);
+        if (missingEmployeeLocationColumns) {
+            employeeResult = await state.client.from('employees').select('id, name, dept, type, status').order('name');
+        }
+
         if (employeeResult.error) throw employeeResult.error;
         if (settingsResult.error) throw settingsResult.error;
+        setEmployeeLocationAvailability(!missingEmployeeLocationColumns);
+        if (missingEmployeeLocationColumns && state.profile.role === 'admin') {
+            showToast('Run the latest supabase/schema.sql to enable employee coordinates.', 'error');
+        }
         const missingLocationRulesTable = ['PGRST205', '42P01'].includes(locationRulesResult.error?.code);
         if (locationRulesResult.error && !missingLocationRulesTable) throw locationRulesResult.error;
         setLocationRulesAvailability(!missingLocationRulesTable);
@@ -104,6 +124,7 @@
             autoFillCheckIn(state.profile.employee_id);
         } else {
             employeeSelect.disabled = false;
+            autoFillCheckIn(employeeSelect.value);
         }
 
         if (state.profile.role === 'admin') {
@@ -334,7 +355,7 @@
         if (!userState.isGpsValid || !Number.isFinite(accuracy)
             || accuracy > appConfig.maxLocationAccuracyMeters) {
             updateCheckInEligibility();
-            showToast('Check-in requires a reliable location inside HQ or an approved area, and outside blocked areas.', 'error');
+            showToast('Check-in requires a reliable location inside the assigned site, HQ, or an approved area, and outside blocked areas.', 'error');
             requestGeolocation();
             return;
         }
@@ -400,6 +421,21 @@
             type: document.getElementById('dirEmpType').value,
             status: document.getElementById('dirEmpStatus').value
         };
+        if (state.employeeLocationFieldsAvailable) {
+            const lat = document.getElementById('dirEmpLat').value.trim();
+            const lng = document.getElementById('dirEmpLng').value.trim();
+            if (Boolean(lat) !== Boolean(lng)) {
+                showToast('Enter both latitude and longitude, or leave both blank.', 'error');
+                return;
+            }
+            record.location_lat = lat === '' ? null : Number(lat);
+            record.location_lng = lng === '' ? null : Number(lng);
+            if (record.location_lat !== null && (!Number.isFinite(record.location_lat) || record.location_lat < -90 || record.location_lat > 90
+                || !Number.isFinite(record.location_lng) || record.location_lng < -180 || record.location_lng > 180)) {
+                showToast('Enter valid latitude and longitude coordinates.', 'error');
+                return;
+            }
+        }
         const request = editIndex === -1
             ? state.client.from('employees').insert(record)
             : state.client.from('employees').update(record).eq('id', employeeDirectory[editIndex].id);
@@ -428,6 +464,24 @@
             document.getElementById('ruleLat').value = position.coords.latitude;
             document.getElementById('ruleLng').value = position.coords.longitude;
             showToast(`Coordinates filled (reported accuracy ±${Math.round(position.coords.accuracy)}m).`, 'success');
+        } catch {
+            showToast('Could not read this device location. Allow precise location and try again.', 'error');
+        }
+    };
+
+    window.useCurrentLocationForEmployee = async function() {
+        if (state.profile?.role !== 'admin') return;
+        if (!state.employeeLocationFieldsAvailable) {
+            showToast('Run the latest supabase/schema.sql to enable employee coordinates.', 'error');
+            return;
+        }
+        try {
+            const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
+                resolve, reject, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+            ));
+            document.getElementById('dirEmpLat').value = position.coords.latitude;
+            document.getElementById('dirEmpLng').value = position.coords.longitude;
+            showToast(`Employee location filled (reported accuracy ±${Math.round(position.coords.accuracy)}m).`, 'success');
         } catch {
             showToast('Could not read this device location. Allow precise location and try again.', 'error');
         }

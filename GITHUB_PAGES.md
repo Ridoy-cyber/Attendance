@@ -27,6 +27,7 @@ GitHub Pages hosts the app; Supabase Auth and Postgres share employee accounts, 
 	```
 
 6. In **Admin Portal > Location Rules**, add a named coordinate and radius, then choose **Approve** or **Block**. Approved areas allow check-ins outside HQ; a block rule overrides HQ and all approved areas. Paused rules are ignored. Rules apply to all employees.
+7. In **Employee Directory**, admins can set optional latitude and longitude for an employee, including filling them from the current device. That employee’s coordinates become their geofence center and use the configured geofence radius; leave both blank to use the shared HQ center.
 
 ## GitHub Pages
 
