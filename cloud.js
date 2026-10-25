@@ -8,8 +8,11 @@
         pendingPortal: 'kiosk',
         logRefreshTimer: null,
         locationRulesAvailable: false,
-        employeeLocationFieldsAvailable: false
+        employeeLocationFieldsAvailable: false,
+        photoCaptureAvailable: false
     };
+    let attendanceCameraStream = null;
+    let resolveAttendancePhoto = null;
 
     appConfig = {
         locationRules: []
@@ -71,13 +74,103 @@
             accuracy: row.accuracy_meters,
             distance: row.distance,
             isGpsValid: row.is_gps_valid,
+            facePhotoData: row.face_photo_data,
+            facePhotoExpiresAt: row.face_photo_expires_at,
             note: row.note
         };
     }
 
+    function stopAttendanceCamera(photoData = null) {
+        if (attendanceCameraStream) {
+            attendanceCameraStream.getTracks().forEach(track => track.stop());
+            attendanceCameraStream = null;
+        }
+        const video = document.getElementById('attendanceCameraPreview');
+        video.srcObject = null;
+        const modal = document.getElementById('attendancePhotoModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (resolveAttendancePhoto) {
+            const resolve = resolveAttendancePhoto;
+            resolveAttendancePhoto = null;
+            resolve(photoData);
+        }
+    }
+
+    function captureAttendancePhoto() {
+        return new Promise(resolve => {
+            const modal = document.getElementById('attendancePhotoModal');
+            const video = document.getElementById('attendanceCameraPreview');
+            const errorLabel = document.getElementById('attendanceCameraError');
+            resolveAttendancePhoto = resolve;
+            errorLabel.classList.add('hidden');
+
+            if (!navigator.mediaDevices?.getUserMedia) {
+                resolveAttendancePhoto = null;
+                showToast('This browser cannot access a camera. Use HTTPS and a camera-enabled device.', 'error');
+                resolve(null);
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                audio: false
+            }).then(async stream => {
+                attendanceCameraStream = stream;
+                video.srcObject = stream;
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                try {
+                    await video.play();
+                } catch (error) {
+                    showCloudError(error);
+                    stopAttendanceCamera(null);
+                }
+            }).catch(error => {
+                resolveAttendancePhoto = null;
+                console.error(error);
+                showToast('Camera access is required to record attendance. Allow camera access and try again.', 'error');
+                resolve(null);
+            });
+        });
+    }
+
+    window.cancelAttendancePhoto = function() {
+        stopAttendanceCamera(null);
+    };
+
+    window.confirmAttendancePhoto = function() {
+        const video = document.getElementById('attendanceCameraPreview');
+        const canvas = document.getElementById('attendancePhotoCanvas');
+        const errorLabel = document.getElementById('attendanceCameraError');
+        if (!video.videoWidth || !video.videoHeight) {
+            errorLabel.innerText = 'Camera is not ready yet. Wait a moment and try again.';
+            errorLabel.classList.remove('hidden');
+            return;
+        }
+
+        const scale = Math.min(1, 640 / Math.max(video.videoWidth, video.videoHeight));
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const photo = canvas.toDataURL('image/jpeg', 0.68);
+        if (photo.length > 600000) {
+            errorLabel.innerText = 'Photo is too large. Move closer to better lighting and capture again.';
+            errorLabel.classList.remove('hidden');
+            return;
+        }
+        stopAttendanceCamera(photo);
+    };
+
     async function loadSharedData() {
         const employeeResult = await state.client.from('employees').select('id, name, dept, type, status').order('name');
         if (employeeResult.error) throw employeeResult.error;
+        const photoSchemaResult = await state.client.from('attendance_logs')
+            .select('face_photo_data, face_photo_expires_at').limit(1);
+        state.photoCaptureAvailable = !photoSchemaResult.error;
+        document.getElementById('photoCaptureSetupWarning').classList.toggle('hidden', state.photoCaptureAvailable);
+        document.getElementById('photoConsentBlock').classList.toggle('hidden', !state.photoCaptureAvailable);
+        document.getElementById('photoConsent').required = state.photoCaptureAvailable;
         employeeDirectory = employeeResult.data;
         populateKioskEmployeeSelect();
 
@@ -308,6 +401,10 @@
             openLogin();
             return;
         }
+        if (state.photoCaptureAvailable && !document.getElementById('photoConsent').checked) {
+            showToast('Agree to the 20-day attendance photo notice before submitting.', 'error');
+            return;
+        }
 
         const empId = state.profile.role === 'employee'
             ? state.profile.employee_id
@@ -316,6 +413,17 @@
         if (!employee || employee.status !== 'Active') {
             showToast('No active employee is assigned to this account.', 'error');
             return;
+        }
+
+        const submitButton = document.getElementById('submitBtn');
+        submitButton.disabled = true;
+        let facePhoto = null;
+        if (state.photoCaptureAvailable) {
+            facePhoto = await captureAttendancePhoto();
+            if (!facePhoto) {
+                submitButton.disabled = false;
+                return;
+            }
         }
 
         const entry = {
@@ -329,14 +437,18 @@
             is_gps_valid: true,
             note: document.getElementById('checkinNote').value.trim() || 'N/A'
         };
+        if (state.photoCaptureAvailable) entry.face_photo_data = facePhoto;
         const { error } = await state.client.from('attendance_logs').insert(entry);
         if (error) {
+            submitButton.disabled = false;
             showCloudError(error);
             return;
         }
 
         showToast(`Attendance (${entry.type}) saved for ${employee.name}.`, 'success');
         document.getElementById('checkinNote').value = '';
+        document.getElementById('photoConsent').checked = false;
+        submitButton.disabled = false;
         if (state.profile.role === 'admin') {
             const { data, error: loadError } = await state.client
                 .from('attendance_logs').select('*').order('created_at', { ascending: false });

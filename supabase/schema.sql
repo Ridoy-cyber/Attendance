@@ -41,6 +41,8 @@ create table if not exists public.attendance_logs (
     accuracy_meters double precision,
     distance integer,
     is_gps_valid boolean not null,
+    face_photo_data text,
+    face_photo_expires_at timestamptz,
     note text not null default 'N/A',
     created_at timestamptz not null default now()
 );
@@ -75,6 +77,12 @@ alter table public.attendance_logs
 alter table public.attendance_logs
     alter column accuracy_meters drop not null,
     alter column accuracy_meters drop default;
+alter table public.attendance_logs
+    add column if not exists face_photo_data text,
+    add column if not exists face_photo_expires_at timestamptz;
+create index if not exists attendance_logs_photo_expiry_idx
+    on public.attendance_logs (face_photo_expires_at)
+    where face_photo_data is not null;
 
 create or replace function public.is_admin()
 returns boolean
@@ -141,6 +149,12 @@ begin
         end if;
     end if;
 
+    if new.face_photo_data is null
+        or new.face_photo_data not like 'data:image/jpeg;base64,%'
+        or length(new.face_photo_data) > 600000 then
+        raise exception 'A valid attendance photo is required (JPEG under 450 KB)';
+    end if;
+
     -- Keep legacy location columns nullable for old records, but do not collect
     -- or validate location for new attendance entries.
     new.lat := null;
@@ -148,6 +162,7 @@ begin
     new.accuracy_meters := null;
     new.distance := null;
     new.is_gps_valid := true;
+    new.face_photo_expires_at := now() + interval '20 days';
     return new;
 end;
 $$;
@@ -177,6 +192,16 @@ insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 update public.app_settings
 set max_location_accuracy_meters = 200
 where id = 1 and max_location_accuracy_meters = 100;
+
+create extension if not exists pg_cron with schema pg_catalog;
+select cron.schedule(
+    'expire-attendance-photos',
+    '* * * * *',
+    $$update public.attendance_logs
+      set face_photo_data = null
+      where face_photo_data is not null
+        and face_photo_expires_at <= now()$$
+);
 
 alter table public.employees enable row level security;
 alter table public.profiles enable row level security;
