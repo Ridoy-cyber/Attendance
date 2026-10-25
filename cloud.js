@@ -138,7 +138,9 @@
             state.profile = null;
             isAdminAuthenticated = false;
             showCloudError(loadError);
-            openLogin('Could not load account data. Check that the database schema has been applied.');
+            const detail = loadError?.message || 'Unknown database error';
+            const code = loadError?.code ? ` (${loadError.code})` : '';
+            openLogin(`Signed in, but account data could not load: ${detail}${code}`);
             return false;
         }
 

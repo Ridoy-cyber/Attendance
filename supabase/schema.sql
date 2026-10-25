@@ -161,6 +161,13 @@ insert into public.profiles (id)
 select id from auth.users
 on conflict (id) do nothing;
 
+-- Keep the configured administrator account in the admin role when this schema is applied.
+update public.profiles p
+set role = 'admin', employee_id = null
+from auth.users u
+where p.id = u.id
+  and lower(u.email) = lower('ridoy@innovatesolution.com');
+
 drop trigger if exists before_attendance_log_set_employee on public.attendance_logs;
 create trigger before_attendance_log_set_employee
     before insert on public.attendance_logs
