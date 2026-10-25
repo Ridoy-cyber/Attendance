@@ -6,14 +6,16 @@
         user: null,
         profile: null,
         pendingPortal: 'kiosk',
-        logRefreshTimer: null
+        logRefreshTimer: null,
+        locationRulesAvailable: true
     };
 
     appConfig = {
         hqLat: 23.8103,
         hqLng: 90.4125,
         allowedRadiusMeters: 500,
-        maxLocationAccuracyMeters: 100
+        maxLocationAccuracyMeters: 100,
+        locationRules: []
     };
     employeeDirectory = [];
     attendanceLogs = [];
@@ -38,6 +40,17 @@
         showToast(error.message || 'Could not reach the shared attendance service.', 'error');
     }
 
+    function setLocationRulesAvailability(available) {
+        state.locationRulesAvailable = available;
+        const warning = document.getElementById('locationRulesSetupWarning');
+        if (warning) warning.classList.toggle('hidden', available);
+        ['ruleName', 'ruleLat', 'ruleLng', 'useCurrentLocationForRuleBtn', 'ruleRadius', 'ruleDecision', 'saveLocationRuleBtn']
+            .forEach(id => {
+                const control = document.getElementById(id);
+                if (control) control.disabled = !available;
+            });
+    }
+
     function mapLog(row) {
         return {
             timestamp: new Date(row.created_at).toLocaleString(),
@@ -56,13 +69,20 @@
     }
 
     async function loadSharedData() {
-        const [employeeResult, settingsResult] = await Promise.all([
+        const [employeeResult, settingsResult, locationRulesResult] = await Promise.all([
             state.client.from('employees').select('id, name, dept, type, status').order('name'),
-            state.client.from('app_settings').select('*').eq('id', 1).single()
+            state.client.from('app_settings').select('*').eq('id', 1).single(),
+            state.client.from('location_rules').select('*').order('created_at', { ascending: false })
         ]);
 
         if (employeeResult.error) throw employeeResult.error;
         if (settingsResult.error) throw settingsResult.error;
+        const missingLocationRulesTable = ['PGRST205', '42P01'].includes(locationRulesResult.error?.code);
+        if (locationRulesResult.error && !missingLocationRulesTable) throw locationRulesResult.error;
+        setLocationRulesAvailability(!missingLocationRulesTable);
+        if (missingLocationRulesTable && state.profile.role === 'admin') {
+            showToast('Apply the latest supabase/schema.sql to enable location rules.', 'error');
+        }
 
         employeeDirectory = employeeResult.data;
         const settings = settingsResult.data;
@@ -70,6 +90,7 @@
         appConfig.hqLng = settings.hq_lng;
         appConfig.allowedRadiusMeters = settings.allowed_radius_meters;
         appConfig.maxLocationAccuracyMeters = settings.max_location_accuracy_meters || 100;
+        appConfig.locationRules = locationRulesResult.data || [];
 
         updateMapGeofenceCircle();
         calculateGpsCompliance();
@@ -94,7 +115,19 @@
             attendanceLogs = data.map(mapLog);
             renderDirectoryTable();
             renderLogsTable();
+            renderLocationRules();
         }
+    }
+
+    async function reloadLocationRules() {
+        const { data, error } = await state.client.from('location_rules')
+            .select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        appConfig.locationRules = data || [];
+        renderLocationRules();
+        updateMapGeofenceCircle();
+        calculateGpsCompliance();
+        updateCheckInEligibility();
     }
 
     async function applySignedInUser(user) {
@@ -301,7 +334,7 @@
         if (!userState.isGpsValid || !Number.isFinite(accuracy)
             || accuracy > appConfig.maxLocationAccuracyMeters) {
             updateCheckInEligibility();
-            showToast('Check-in requires a reliable location inside the HQ geofence.', 'error');
+            showToast('Check-in requires a reliable location inside HQ or an approved area, and outside blocked areas.', 'error');
             requestGeolocation();
             return;
         }
@@ -380,6 +413,109 @@
         resetDirectoryForm();
         renderDirectoryTable();
         showToast(editIndex === -1 ? 'Employee added.' : 'Employee updated.', 'success');
+    };
+
+    window.useCurrentLocationForRule = async function() {
+        if (state.profile?.role !== 'admin') return;
+        if (!state.locationRulesAvailable) {
+            showToast('Apply the latest supabase/schema.sql to enable location rules.', 'error');
+            return;
+        }
+        try {
+            const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
+                resolve, reject, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+            ));
+            document.getElementById('ruleLat').value = position.coords.latitude;
+            document.getElementById('ruleLng').value = position.coords.longitude;
+            showToast(`Coordinates filled (reported accuracy ±${Math.round(position.coords.accuracy)}m).`, 'success');
+        } catch {
+            showToast('Could not read this device location. Allow precise location and try again.', 'error');
+        }
+    };
+
+    window.saveLocationRule = async function(event) {
+        event.preventDefault();
+        if (state.profile?.role !== 'admin') return;
+        if (!state.locationRulesAvailable) {
+            showToast('Apply the latest supabase/schema.sql to enable location rules.', 'error');
+            return;
+        }
+        const rule = {
+            name: document.getElementById('ruleName').value.trim(),
+            lat: Number(document.getElementById('ruleLat').value),
+            lng: Number(document.getElementById('ruleLng').value),
+            radius_meters: Number(document.getElementById('ruleRadius').value),
+            decision: document.getElementById('ruleDecision').value,
+            is_active: true
+        };
+        if (!rule.name || !Number.isFinite(rule.lat) || rule.lat < -90 || rule.lat > 90
+            || !Number.isFinite(rule.lng) || rule.lng < -180 || rule.lng > 180
+            || !Number.isInteger(rule.radius_meters) || rule.radius_meters < 1 || rule.radius_meters > 50000
+            || !['approve', 'block'].includes(rule.decision)) {
+            showToast('Enter a valid name, coordinate pair, radius, and decision.', 'error');
+            return;
+        }
+        const { error } = await state.client.from('location_rules').insert(rule);
+        if (error) {
+            showCloudError(error);
+            return;
+        }
+        try {
+            await reloadLocationRules();
+            document.getElementById('locationRuleForm')?.reset();
+            document.getElementById('ruleRadius').value = 500;
+            showToast(`${rule.decision === 'approve' ? 'Approved' : 'Blocked'} location saved.`, 'success');
+        } catch (loadError) {
+            showCloudError(loadError);
+        }
+    };
+
+    window.toggleLocationRule = async function(id, isActive) {
+        if (state.profile?.role !== 'admin') return;
+        if (!state.locationRulesAvailable) return;
+        const { error } = await state.client.from('location_rules').update({ is_active: isActive }).eq('id', id);
+        if (error) {
+            showCloudError(error);
+            return;
+        }
+        try {
+            await reloadLocationRules();
+            showToast(`Location rule ${isActive ? 'activated' : 'paused'}.`, 'success');
+        } catch (loadError) {
+            showCloudError(loadError);
+        }
+    };
+
+    window.changeLocationRuleDecision = async function(id, decision) {
+        if (state.profile?.role !== 'admin' || !['approve', 'block'].includes(decision)) return;
+        if (!state.locationRulesAvailable) return;
+        const { error } = await state.client.from('location_rules').update({ decision }).eq('id', id);
+        if (error) {
+            showCloudError(error);
+            return;
+        }
+        try {
+            await reloadLocationRules();
+            showToast(`Location is now ${decision === 'approve' ? 'approved' : 'blocked'}.`, 'success');
+        } catch (loadError) {
+            showCloudError(loadError);
+        }
+    };
+
+    window.deleteLocationRule = async function(id) {
+        if (state.profile?.role !== 'admin' || !window.confirm('Delete this location rule?')) return;
+        if (!state.locationRulesAvailable) return;
+        const { error } = await state.client.from('location_rules').delete().eq('id', id);
+        if (error) {
+            showCloudError(error);
+            return;
+        }
+        try {
+            await reloadLocationRules();
+            showToast('Location rule deleted.', 'success');
+        } catch (loadError) {
+            showCloudError(loadError);
+        }
     };
 
     window.deleteEmployeeRecord = async function(index) {

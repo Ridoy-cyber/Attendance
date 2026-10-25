@@ -4,7 +4,7 @@ GitHub Pages hosts the app; Supabase Auth and Postgres share employee accounts, 
 
 ## Supabase Setup
 
-1. Run or rerun the current `supabase/schema.sql` in the Supabase SQL Editor to install or update the tables, triggers, and row-level security policies.
+1. Run or rerun the current `supabase/schema.sql` in the Supabase SQL Editor to install or update the tables, triggers, and row-level security policies. This schema also creates the location rules table required for admin-approved and blocked areas.
 2. `supabase-config.js` contains the project URL and public publishable key. Only the public key belongs in the app; never add a `service_role` key.
 3. Disable public sign-ups in Supabase Authentication settings. Create the first account in Authentication > Users, then promote it in the SQL Editor, replacing the email:
 
@@ -25,6 +25,8 @@ GitHub Pages hosts the app; Supabase Auth and Postgres share employee accounts, 
 	  and u.email = 'employee@example.com'
 	  and e.id = 'EMP-1001';
 	```
+
+6. In **Admin Portal > Location Rules**, add a named coordinate and radius, then choose **Approve** or **Block**. Approved areas allow check-ins outside HQ; a block rule overrides HQ and all approved areas. Paused rules are ignored. Rules apply to all employees.
 
 ## GitHub Pages
 
