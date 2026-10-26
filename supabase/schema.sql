@@ -58,6 +58,15 @@ create table if not exists public.location_rules (
     created_at timestamptz not null default now()
 );
 
+create table if not exists public.allowed_ips (
+    id uuid primary key default gen_random_uuid(),
+    ip_address text not null unique,
+    description text not null default '',
+    is_active boolean not null default true,
+    created_at timestamptz not null default now(),
+    constraint allowed_ips_address_not_blank check (length(trim(ip_address)) > 0)
+);
+
 alter table public.app_settings
     add column if not exists max_location_accuracy_meters integer not null default 200;
 alter table public.app_settings
@@ -138,7 +147,9 @@ begin
         raise exception 'Attendance can only be recorded for an active employee';
     end if;
 
-    if not (select public.is_admin()) then
+    -- Service-role writes are issued only by the authenticated Edge Function,
+    -- which verifies the user's profile and employee assignment before insert.
+    if auth.role() <> 'service_role' and not (select public.is_admin()) then
         if new.user_id is distinct from (select auth.uid()) then
             raise exception 'Attendance user must match the signed-in account';
         end if;
@@ -208,6 +219,7 @@ alter table public.profiles enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.attendance_logs enable row level security;
 alter table public.location_rules enable row level security;
+alter table public.allowed_ips enable row level security;
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.employees to authenticated;
@@ -215,6 +227,8 @@ grant select on public.profiles to authenticated;
 grant select, update on public.app_settings to authenticated;
 grant select, insert, delete on public.attendance_logs to authenticated;
 grant select, insert, update, delete on public.location_rules to authenticated;
+grant select, insert, update, delete on public.allowed_ips to authenticated;
+revoke insert on public.attendance_logs from anon, authenticated;
 revoke all on function public.is_admin() from public;
 revoke all on function public.current_employee_id() from public;
 revoke all on function public.create_employee_profile() from public;
@@ -266,21 +280,14 @@ create policy "Admins read attendance logs"
     using ((select public.is_admin()));
 
 drop policy if exists "Employees submit their own attendance" on public.attendance_logs;
-create policy "Employees submit their own attendance"
-    on public.attendance_logs for insert to authenticated
-    with check (
-        user_id = (select auth.uid())
-        and (
-            emp_id = (select public.current_employee_id())
-            or (select public.is_admin())
-        )
-        and (
-            (select public.is_admin())
-            or (select public.current_employee_id()) is not null
-        )
-    );
 
 drop policy if exists "Admins delete attendance logs" on public.attendance_logs;
 create policy "Admins delete attendance logs"
     on public.attendance_logs for delete to authenticated
     using ((select public.is_admin()));
+
+drop policy if exists "Admins manage allowed IPs" on public.allowed_ips;
+create policy "Admins manage allowed IPs"
+    on public.allowed_ips for all to authenticated
+    using ((select public.is_admin()))
+    with check ((select public.is_admin()));

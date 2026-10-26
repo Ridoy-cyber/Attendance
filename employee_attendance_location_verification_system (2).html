@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Attendance & Location Verification System</title>
+    <title>Innovate Attendance</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -60,7 +60,7 @@
                         <i class="fa-solid fa-shield-halved text-xl"></i>
                     </div>
                     <div>
-                        <h1 class="font-bold text-lg leading-tight tracking-wide">GeoGuard Attendance</h1>
+                        <h1 class="font-bold text-lg leading-tight tracking-wide">Innovate Attendance</h1>
                         <p class="text-xs text-slate-400">Shared Attendance</p>
                     </div>
                 </div>
@@ -246,6 +246,10 @@
                 <button id="adminTabBtn-locations" onclick="switchAdminSubTab('locations')" class="admin-nav text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 whitespace-nowrap">
                     <i class="fa-solid fa-map-location-dot"></i>
                     <span>Location Rules</span>
+                </button>
+                <button id="adminTabBtn-ips" onclick="switchAdminSubTab('ips')" class="admin-nav text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 whitespace-nowrap">
+                    <i class="fa-solid fa-network-wired"></i>
+                    <span>Allowed IPs</span>
                 </button>
                 <button id="adminTabBtn-settings" onclick="switchAdminSubTab('settings')" class="admin-nav text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 whitespace-nowrap">
                     <i class="fa-solid fa-gears"></i>
@@ -470,6 +474,40 @@
             </div>
         </section>
 
+        <section id="adminSub-ips" class="hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-4 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-100 pb-3">
+                        <h3 class="text-base font-bold text-slate-900">Register an IP Network</h3>
+                        <p class="text-xs text-slate-500 mt-1">Attendance can be submitted from active registered networks.</p>
+                    </div>
+                    <p id="allowedIpsSetupWarning" class="hidden p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">Run <code>supabase/migrations/20261026000100_ip_restricted_attendance.sql</code> in Supabase SQL Editor and deploy the submit-attendance Edge Function.</p>
+                    <form id="allowedIpForm" onsubmit="addAllowedIp(event)" class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="allowedIpAddress">IP Address</label>
+                            <input id="allowedIpAddress" required maxlength="45" placeholder="203.0.113.10" class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
+                        </div>
+                        <button type="button" id="fillCurrentIpBtn" onclick="fillCurrentAdminIp()" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Use This Network's IP</button>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="allowedIpDescription">Description</label>
+                            <input id="allowedIpDescription" maxlength="120" placeholder="Office Wi-Fi" class="w-full rounded-xl border-slate-300 text-xs p-2.5 border">
+                        </div>
+                        <button type="submit" id="saveAllowedIpBtn" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow">Add Allowed IP</button>
+                    </form>
+                </div>
+                <div class="lg:col-span-8 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-100 pb-3">
+                        <h3 class="text-base font-bold text-slate-900">Allowed IP Networks</h3>
+                        <p class="text-xs text-slate-500 mt-1">Inactive addresses are blocked from attendance submission.</p>
+                    </div>
+                    <div class="overflow-x-auto"><table class="w-full text-left text-xs text-slate-600">
+                        <thead class="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-y border-slate-200"><tr><th class="py-3 px-3">IP Address</th><th class="py-3 px-3">Description</th><th class="py-3 px-3">Status</th><th class="py-3 px-3 text-right">Actions</th></tr></thead>
+                        <tbody id="allowedIpsTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table></div>
+                </div>
+            </div>
+        </section>
+
         <!-- ADMIN SUB-TAB 3: SYSTEM SETTINGS -->
         <section id="adminSub-settings" class="hidden space-y-6">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -683,6 +721,7 @@
             document.getElementById('adminSub-directory').classList.add('hidden');
             document.getElementById('adminSub-logs').classList.add('hidden');
             document.getElementById('adminSub-locations').classList.add('hidden');
+            document.getElementById('adminSub-ips').classList.add('hidden');
             document.getElementById('adminSub-settings').classList.add('hidden');
 
             document.getElementById(`adminSub-${subTabId}`).classList.remove('hidden');

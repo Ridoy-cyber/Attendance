@@ -9,7 +9,8 @@
         logRefreshTimer: null,
         locationRulesAvailable: false,
         employeeLocationFieldsAvailable: false,
-        photoCaptureAvailable: false
+        photoCaptureAvailable: false,
+        allowedIpsAvailable: false
     };
     let attendanceCameraStream = null;
     let resolveAttendancePhoto = null;
@@ -193,6 +194,7 @@
             attendanceLogs = data.map(mapLog);
             renderDirectoryTable();
             renderLogsTable();
+            await reloadAllowedIps();
         }
     }
 
@@ -205,6 +207,30 @@
         updateMapGeofenceCircle();
         calculateGpsCompliance();
         updateCheckInEligibility();
+    }
+
+    async function reloadAllowedIps() {
+        const { data, error } = await state.client.from('allowed_ips')
+            .select('*').order('created_at', { ascending: false });
+        state.allowedIpsAvailable = !error;
+        const warning = document.getElementById('allowedIpsSetupWarning');
+        if (warning) warning.classList.toggle('hidden', state.allowedIpsAvailable);
+        ['allowedIpAddress', 'allowedIpDescription', 'fillCurrentIpBtn', 'saveAllowedIpBtn']
+            .forEach(id => { const input = document.getElementById(id); if (input) input.disabled = !state.allowedIpsAvailable; });
+        if (error) return;
+        const body = document.getElementById('allowedIpsTableBody');
+        if (!body) return;
+        if (!data?.length) {
+            body.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-400">No allowed IPs configured. Attendance submission is blocked until one is added.</td></tr>';
+            return;
+        }
+        const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        body.innerHTML = data.map(row => `<tr>
+            <td class="py-3 px-3 font-mono font-semibold text-slate-800">${safe(row.ip_address)}</td>
+            <td class="py-3 px-3">${safe(row.description || '—')}</td>
+            <td class="py-3 px-3"><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${row.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}">${row.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td class="py-3 px-3 text-right whitespace-nowrap"><button onclick="toggleAllowedIp('${safe(row.id)}', ${!row.is_active})" class="text-brand-600 hover:underline font-semibold mr-3">${row.is_active ? 'Deactivate' : 'Activate'}</button><button onclick="deleteAllowedIp('${safe(row.id)}')" class="text-rose-600 hover:underline font-semibold">Delete</button></td>
+        </tr>`).join('');
     }
 
     async function applySignedInUser(user) {
@@ -264,8 +290,8 @@
     window.onload = async function() {
         initClock();
 
-        const projectUrl = window.GEOGUARD_SUPABASE_URL;
-        const publicKey = window.GEOGUARD_SUPABASE_ANON_KEY;
+        const projectUrl = window.INNOVATE_SUPABASE_URL;
+        const publicKey = window.INNOVATE_SUPABASE_ANON_KEY;
         if (!window.supabase || !projectUrl || !publicKey) {
             openLogin('Set the Supabase project URL and public anon key in supabase-config.js first.');
             return;
@@ -427,21 +453,18 @@
         }
 
         const entry = {
-            user_id: state.user.id,
             emp_id: employee.id,
-            emp_name: employee.name,
-            emp_dept: employee.dept,
             type: document.getElementById('checkinType').value,
-            ip: 'N/A',
-            is_ip_valid: true,
             is_gps_valid: true,
             note: document.getElementById('checkinNote').value.trim() || 'N/A'
         };
         if (state.photoCaptureAvailable) entry.face_photo_data = facePhoto;
-        const { error } = await state.client.from('attendance_logs').insert(entry);
+        const { error } = await state.client.functions.invoke('submit-attendance', { body: entry });
         if (error) {
             submitButton.disabled = false;
-            showCloudError(error);
+            let message = error.message || 'Attendance submission failed.';
+            try { message = (await error.context.json()).error || message; } catch {}
+            showToast(message, 'error');
             return;
         }
 
@@ -491,6 +514,51 @@
         resetDirectoryForm();
         renderDirectoryTable();
         showToast(editIndex === -1 ? 'Employee added.' : 'Employee updated.', 'success');
+    };
+
+    window.addAllowedIp = async function(event) {
+        event.preventDefault();
+        if (state.profile?.role !== 'admin' || !state.allowedIpsAvailable) return;
+        const ip_address = document.getElementById('allowedIpAddress').value.trim();
+        const description = document.getElementById('allowedIpDescription').value.trim();
+        const { error } = await state.client.from('allowed_ips').insert({ ip_address, description, is_active: true });
+        if (error) { showCloudError(error); return; }
+        document.getElementById('allowedIpForm').reset();
+        await reloadAllowedIps();
+        showToast('Allowed IP added.', 'success');
+    };
+
+    window.fillCurrentAdminIp = async function() {
+        if (state.profile?.role !== 'admin') return;
+        const button = document.getElementById('fillCurrentIpBtn');
+        button.disabled = true;
+        try {
+            const { data, error } = await state.client.functions.invoke('submit-attendance', { body: { action: 'get-ip' } });
+            if (error) {
+                let message = error.message || 'Could not detect this network IP.';
+                try { message = (await error.context.json()).error || message; } catch {}
+                throw new Error(message);
+            }
+            document.getElementById('allowedIpAddress').value = data.ip;
+            showToast('Current public network IP filled.', 'success');
+        } catch (error) { showToast(error.message, 'error'); }
+        finally { button.disabled = false; }
+    };
+
+    window.toggleAllowedIp = async function(id, isActive) {
+        if (state.profile?.role !== 'admin' || !state.allowedIpsAvailable) return;
+        const { error } = await state.client.from('allowed_ips').update({ is_active: isActive }).eq('id', id);
+        if (error) { showCloudError(error); return; }
+        await reloadAllowedIps();
+        showToast(`IP network ${isActive ? 'activated' : 'deactivated'}.`, 'success');
+    };
+
+    window.deleteAllowedIp = async function(id) {
+        if (state.profile?.role !== 'admin' || !state.allowedIpsAvailable || !window.confirm('Delete this allowed IP network?')) return;
+        const { error } = await state.client.from('allowed_ips').delete().eq('id', id);
+        if (error) { showCloudError(error); return; }
+        await reloadAllowedIps();
+        showToast('Allowed IP deleted.', 'success');
     };
 
     window.useCurrentLocationForRule = async function() {
