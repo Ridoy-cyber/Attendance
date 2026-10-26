@@ -149,7 +149,7 @@ begin
 
     -- Service-role writes are issued only by the authenticated Edge Function,
     -- which verifies the user's profile and employee assignment before insert.
-    if auth.role() <> 'service_role' and not (select public.is_admin()) then
+    if coalesce(auth.role(), '') <> 'service_role' and not (select public.is_admin()) then
         if new.user_id is distinct from (select auth.uid()) then
             raise exception 'Attendance user must match the signed-in account';
         end if;

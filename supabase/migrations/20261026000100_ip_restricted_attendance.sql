@@ -39,7 +39,7 @@ begin
 
     -- The Edge Function verifies the signed-in profile and assignment before
     -- writing with service_role. Every other write remains user-bound.
-    if auth.role() <> 'service_role' and not (select public.is_admin()) then
+    if coalesce(auth.role(), '') <> 'service_role' and not (select public.is_admin()) then
         if new.user_id is distinct from (select auth.uid()) then
             raise exception 'Attendance user must match the signed-in account';
         end if;
