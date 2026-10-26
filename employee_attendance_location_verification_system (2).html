@@ -52,7 +52,7 @@
 
     <!-- Top Global Header Nav -->
     <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <!-- System Logo -->
                 <div class="flex items-center space-x-3">
@@ -81,10 +81,29 @@
                             <span>Admin Portal</span>
                         </button>
                     </div>
+                    <button id="profileBtn" onclick="toggleUserProfile()" type="button" aria-controls="userProfilePanel" aria-expanded="false" class="hidden px-2.5 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 text-xs font-semibold items-center gap-2" aria-label="Open profile">
+                        <i class="fa-solid fa-circle-user text-base"></i><span class="hidden sm:inline">Profile</span>
+                    </button>
                     <button id="signOutBtn" onclick="signOutUser()" type="button" title="Sign out" class="hidden px-2.5 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700" aria-label="Sign out">
                         <i class="fa-solid fa-arrow-right-from-bracket"></i>
                     </button>
                 </div>
+                <section id="userProfilePanel" aria-label="Signed-in user profile" class="hidden absolute right-4 top-16 z-[60] w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-5 text-slate-800 shadow-2xl">
+                    <div class="flex items-center gap-3 border-b border-slate-100 pb-4">
+                        <div id="profileAvatar" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 font-bold">U</div>
+                        <div class="min-w-0">
+                            <h2 id="profileDisplayName" class="truncate text-sm font-bold">Signed-in user</h2>
+                            <p id="profileEmail" class="truncate text-xs text-slate-500"></p>
+                        </div>
+                    </div>
+                    <dl class="mt-4 space-y-3 text-xs">
+                        <div class="flex justify-between gap-4"><dt class="text-slate-500">Account role</dt><dd id="profileRole" class="font-semibold text-slate-800">—</dd></div>
+                        <div id="profileEmployeeRow" class="flex justify-between gap-4"><dt class="text-slate-500">Employee ID</dt><dd id="profileEmployeeId" class="font-semibold text-slate-800">—</dd></div>
+                        <div id="profileDepartmentRow" class="flex justify-between gap-4"><dt class="text-slate-500">Department</dt><dd id="profileDepartment" class="max-w-44 truncate text-right font-semibold text-slate-800">—</dd></div>
+                        <div id="profileTypeRow" class="flex justify-between gap-4"><dt class="text-slate-500">Employment type</dt><dd id="profileType" class="font-semibold text-slate-800">—</dd></div>
+                        <div id="profileStatusRow" class="flex justify-between gap-4"><dt class="text-slate-500">Employee status</dt><dd id="profileStatus" class="font-semibold text-slate-800">—</dd></div>
+                    </dl>
+                </section>
             </div>
         </div>
     </header>

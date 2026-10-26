@@ -233,6 +233,41 @@
         </tr>`).join('');
     }
 
+    function renderSignedInProfile() {
+        if (!state.user || !state.profile) return;
+        const employee = state.profile.employee_id
+            ? employeeDirectory.find(item => item.id === state.profile.employee_id)
+            : null;
+        const metadataName = state.user.user_metadata?.full_name || state.user.user_metadata?.name;
+        const displayName = employee?.name || metadataName || state.user.email?.split('@')[0] || 'Signed-in user';
+        const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'U';
+        const setText = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = value || '—';
+        };
+        setText('profileAvatar', initials);
+        setText('profileDisplayName', displayName);
+        setText('profileEmail', state.user.email || '');
+        setText('profileRole', state.profile.role === 'admin' ? 'Administrator' : 'Employee');
+        setText('profileEmployeeId', state.profile.employee_id);
+        setText('profileDepartment', employee?.dept);
+        setText('profileType', employee?.type);
+        setText('profileStatus', employee?.status);
+
+        const isEmployee = state.profile.role === 'employee';
+        ['profileEmployeeRow', 'profileDepartmentRow', 'profileTypeRow', 'profileStatusRow']
+            .forEach(id => document.getElementById(id)?.classList.toggle('hidden', !isEmployee));
+    }
+
+    window.toggleUserProfile = function() {
+        if (!state.user) return;
+        const panel = document.getElementById('userProfilePanel');
+        const button = document.getElementById('profileBtn');
+        const isOpening = panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', !isOpening);
+        button.setAttribute('aria-expanded', String(isOpening));
+    };
+
     async function applySignedInUser(user) {
         const { data: profile, error } = await state.client
             .from('profiles')
@@ -252,6 +287,7 @@
 
         try {
             await loadSharedData();
+            renderSignedInProfile();
         } catch (loadError) {
             state.user = null;
             state.profile = null;
@@ -264,6 +300,8 @@
         }
 
         document.getElementById('signOutBtn').classList.remove('hidden');
+        document.getElementById('profileBtn').classList.remove('hidden');
+        document.getElementById('profileBtn').classList.add('flex');
         document.getElementById('pinInput').value = '';
         document.getElementById('pinModal').classList.add('hidden');
         showToast(`Signed in as ${profile.role}.`, 'success');
@@ -311,6 +349,10 @@
                 document.getElementById('empId').value = '';
                 document.getElementById('empDept').value = '';
                 document.getElementById('signOutBtn').classList.add('hidden');
+                document.getElementById('profileBtn').classList.add('hidden');
+                document.getElementById('profileBtn').classList.remove('flex');
+                document.getElementById('userProfilePanel').classList.add('hidden');
+                document.getElementById('profileBtn').setAttribute('aria-expanded', 'false');
                 document.getElementById('viewAdmin').classList.add('hidden');
                 document.getElementById('viewKiosk').classList.remove('hidden');
                 openLogin();
