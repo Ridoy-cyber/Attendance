@@ -260,7 +260,10 @@
     }
 
     window.toggleUserProfile = function() {
-        if (!state.user) return;
+        if (!state.user) {
+            openLogin('Sign in to view your profile.');
+            return;
+        }
         const panel = document.getElementById('userProfilePanel');
         const button = document.getElementById('profileBtn');
         const isOpening = panel.classList.contains('hidden');
@@ -349,8 +352,6 @@
                 document.getElementById('empId').value = '';
                 document.getElementById('empDept').value = '';
                 document.getElementById('signOutBtn').classList.add('hidden');
-                document.getElementById('profileBtn').classList.add('hidden');
-                document.getElementById('profileBtn').classList.remove('flex');
                 document.getElementById('userProfilePanel').classList.add('hidden');
                 document.getElementById('profileBtn').setAttribute('aria-expanded', 'false');
                 document.getElementById('viewAdmin').classList.add('hidden');
