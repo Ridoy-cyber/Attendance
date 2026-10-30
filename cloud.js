@@ -259,22 +259,178 @@
         setText('profileDepartment', employee?.dept);
         setText('profileType', employee?.type);
         setText('profileStatus', employee?.status);
+        setText('profilePageAvatar', initials);
+        setText('profilePageName', displayName);
+        setText('profilePageEmail', state.user.email || '');
+        setText('profilePageRole', state.profile.role === 'admin' ? 'Administrator' : 'Employee');
+        setText('profilePageEmployeeId', state.profile.employee_id);
+        setText('profilePageDepartment', employee?.dept);
+        setText('profilePageType', employee?.type);
 
         const isEmployee = state.profile.role === 'employee';
         ['profileEmployeeRow', 'profileDepartmentRow', 'profileTypeRow', 'profileStatusRow']
             .forEach(id => document.getElementById(id)?.classList.toggle('hidden', !isEmployee));
+        document.getElementById('profilePageEmployeeDetails')?.classList.toggle('hidden', !isEmployee);
     }
 
-    window.toggleUserProfile = function() {
+    function getDhakaDateParts(date) {
+        return Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+        }).formatToParts(date).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+    }
+
+    function getDhakaMonthRange(now = new Date()) {
+        const parts = getDhakaDateParts(now);
+        const year = Number(parts.year);
+        const month = Number(parts.month);
+        const dhakaOffsetMs = 6 * 60 * 60 * 1000;
+        return {
+            monthKey: `${parts.year}-${parts.month}`,
+            label: new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', month: 'long', year: 'numeric' })
+                .format(new Date(Date.UTC(year, month - 1, 15))),
+            start: new Date(Date.UTC(year, month - 1, 1) - dhakaOffsetMs).toISOString(),
+            // Include the following month's morning clock-outs so the final shift day is complete.
+            end: new Date(Date.UTC(year, month, 1) - dhakaOffsetMs + 12 * 60 * 60 * 1000).toISOString()
+        };
+    }
+
+    function getNightShiftWorkDate(timestamp, type) {
+        const parts = getDhakaDateParts(new Date(timestamp));
+        const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
+        const belongsToPreviousNight = type === 'Clock In'
+            ? minuteOfDay < 6 * 60
+            : type === 'Clock Out' && minuteOfDay <= 12 * 60;
+        const localDate = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day))
+            - (belongsToPreviousNight ? 24 * 60 * 60 * 1000 : 0));
+        return localDate.toISOString().slice(0, 10);
+    }
+
+    function getDailyMotivation(employeeId, now = new Date()) {
+        const messages = [
+            'Your steady effort is building something great. Keep shining! ✨',
+            'Every shift is a fresh chance to do work you can be proud of. 💪',
+            'Small steps, strong habits, big progress. You are on your way! 🌟',
+            'Your dedication makes a difference. Keep bringing your best! 🚀',
+            'You have the focus and strength to make today count. 🔥',
+            'Great work grows from showing up with heart. Keep going! 💙',
+            'Your effort matters more than you know. Make today yours! 🌈',
+            'Be proud of how far you have come—and excited for what is next! ⭐',
+            'A positive start can turn an ordinary shift into a great one. ☀️',
+            'You are capable, resilient, and ready for a strong day. 💫',
+            'Bring your best energy; your future self will thank you. 🎯',
+            'Progress is made one thoughtful action at a time. Keep moving! 🏆',
+            'Your commitment inspires the people working beside you. 🙌',
+            'You have what it takes to handle today with confidence. 🌻',
+            'Your hard work is a reason to feel proud. Keep it up! ✨',
+            'Make room for progress, patience, and a little joy today. 😊',
+            'You are stronger than a difficult moment. Keep your momentum! 💪',
+            'Your consistency is turning effort into achievement. 📈',
+            'Show up, stay curious, and let your great work speak. 🌟',
+            'Today is another opportunity to make a meaningful difference. 💚',
+            'Trust your skills and take the next step with confidence. 🚀',
+            'Your positive attitude can brighten the whole team. ☀️',
+            'Keep aiming high while celebrating every bit of progress. 🎉',
+            'Your care and effort make today better for everyone. 💙',
+            'You are growing with every challenge you meet. Keep going! 🌱',
+            'Bring patience, purpose, and pride into your work today. 🏅',
+            'One good decision at a time adds up to something remarkable. ✨',
+            'You have already proven you can keep moving forward. 🔥',
+            'Your work has value, and your progress deserves recognition. 👏',
+            'Make today a day you will remember for the right reasons. 🌈',
+            'Keep believing in your ability to learn, improve, and succeed. ⭐'
+        ];
+        const parts = getDhakaDateParts(now);
+        const dayNumber = Math.floor((Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day))
+            - Date.UTC(Number(parts.year), 0, 1)) / (24 * 60 * 60 * 1000));
+        const employeeOffset = [...String(employeeId || '')].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+        return { message: messages[(dayNumber + employeeOffset) % messages.length], date: parts };
+    }
+
+    function renderDailyMotivation(employee) {
+        const motivation = getDailyMotivation(employee?.id);
+        document.getElementById('dailyMotivationMessage').textContent = motivation.message;
+        document.getElementById('dailyMotivationDate').textContent = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Dhaka', weekday: 'long', month: 'long', day: 'numeric'
+        }).format(new Date());
+    }
+
+    function renderEmployeeAttendanceStats(rows, employee) {
+        const range = getDhakaMonthRange();
+        const presentDays = new Set();
+        const lateDays = new Set();
+        const earlyDays = new Set();
+        (rows || []).forEach(row => {
+            const parts = getDhakaDateParts(new Date(row.created_at));
+            const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
+            const workDate = getNightShiftWorkDate(row.created_at, row.type);
+            if (!workDate.startsWith(range.monthKey)) return;
+            presentDays.add(workDate);
+            if (row.type === 'Clock In' && (minuteOfDay >= 22 * 60 || minuteOfDay <= 6 * 60)) {
+                const minutesLate = (minuteOfDay - 22 * 60 + 24 * 60) % (24 * 60);
+                if (minutesLate > 0) lateDays.add(workDate);
+            }
+            if (row.type === 'Clock Out' && minuteOfDay < 6 * 60 && 6 * 60 - minuteOfDay > 0) {
+                earlyDays.add(workDate);
+            }
+        });
+
+        document.getElementById('profileStatsMonth').textContent = range.label;
+        document.getElementById('profilePresentDays').textContent = String(presentDays.size);
+        document.getElementById('profileLateDays').textContent = String(lateDays.size);
+        document.getElementById('profileEarlyDays').textContent = String(earlyDays.size);
+        renderDailyMotivation(employee);
+    }
+
+    async function loadEmployeeAttendanceStats() {
+        const range = getDhakaMonthRange();
+        const { data, error } = await state.client.from('attendance_logs')
+            .select('created_at, type')
+            .eq('user_id', state.user.id)
+            .gte('created_at', range.start)
+            .lt('created_at', range.end)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        const employee = employeeDirectory.find(item => item.id === state.profile.employee_id);
+        renderEmployeeAttendanceStats(data || [], employee);
+    }
+
+    window.openProfilePage = async function() {
         if (!state.user) {
             openLogin('Sign in to view your profile.');
             return;
         }
-        const panel = document.getElementById('userProfilePanel');
-        const button = document.getElementById('profileBtn');
-        const isOpening = panel.classList.contains('hidden');
-        panel.classList.toggle('hidden', !isOpening);
-        button.setAttribute('aria-expanded', String(isOpening));
+        document.getElementById('userProfilePanel')?.classList.add('hidden');
+        document.getElementById('viewKiosk').classList.add('hidden');
+        document.getElementById('viewAdmin').classList.add('hidden');
+        document.getElementById('viewProfile').classList.remove('hidden');
+        renderSignedInProfile();
+
+        const isEmployee = state.profile.role === 'employee';
+        document.getElementById('employeeProfileDashboard').classList.toggle('hidden', !isEmployee);
+        document.getElementById('adminProfileNotice').classList.toggle('hidden', isEmployee);
+        if (!isEmployee) return;
+
+        const employee = employeeDirectory.find(item => item.id === state.profile.employee_id);
+        renderDailyMotivation(employee);
+        document.getElementById('profilePresentDays').textContent = '—';
+        document.getElementById('profileLateDays').textContent = '—';
+        document.getElementById('profileEarlyDays').textContent = '—';
+        document.getElementById('profileStatsError').classList.add('hidden');
+        document.getElementById('profileStatsMonth').textContent = 'Loading attendance summary…';
+        try {
+            await loadEmployeeAttendanceStats();
+        } catch (error) {
+            const message = document.getElementById('profileStatsError');
+            message.textContent = 'Your attendance summary is unavailable. Ask your administrator to apply the employee profile attendance migration.';
+            message.classList.remove('hidden');
+            console.error(error);
+        }
+    };
+
+    window.returnFromProfilePage = function() {
+        if (!state.user || !state.profile) return;
+        window.switchMainPortal(state.profile.role === 'admin' ? 'admin' : 'kiosk');
     };
 
     async function applySignedInUser(user) {
@@ -361,6 +517,7 @@
                 document.getElementById('userProfilePanel').classList.add('hidden');
                 document.getElementById('profileBtn').setAttribute('aria-expanded', 'false');
                 document.getElementById('viewAdmin').classList.add('hidden');
+                document.getElementById('viewProfile').classList.add('hidden');
                 document.getElementById('viewKiosk').classList.remove('hidden');
                 openLogin();
             }
