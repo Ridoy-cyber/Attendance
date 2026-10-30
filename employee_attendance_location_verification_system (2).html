@@ -420,6 +420,7 @@
                             <th class="py-3 px-3">Timestamp</th>
                             <th class="py-3 px-3">Employee</th>
                             <th class="py-3 px-3">Type</th>
+                            <th class="py-3 px-3">Night Shift Variance</th>
                             <th class="py-3 px-3">Geofence Dist</th>
                             <th class="py-3 px-3">GPS Accuracy</th>
                             <th class="py-3 px-3">GPS Status</th>
@@ -1130,6 +1131,24 @@
             });
         }
 
+        function getNightShiftVariance(log) {
+            const timestamp = new Date(log.createdAt || log.timestamp);
+            if (!Number.isFinite(timestamp.getTime())) return '';
+            const minuteOfDay = timestamp.getHours() * 60 + timestamp.getMinutes();
+            if (log.type === 'Clock In') {
+                const startMinute = 22 * 60;
+                // A clock-in after midnight belongs to the overnight shift that began at 10 PM.
+                const minutesLate = (minuteOfDay - startMinute + 24 * 60) % (24 * 60);
+                if (minuteOfDay < 6 * 60 || minuteOfDay >= startMinute) {
+                    return minutesLate > 0 ? `Late ${minutesLate} min` : '';
+                }
+            } else if (log.type === 'Clock Out' && minuteOfDay < 6 * 60) {
+                const minutesEarly = 6 * 60 - minuteOfDay;
+                return minutesEarly > 0 ? `Early ${minutesEarly} min` : '';
+            }
+            return '';
+        }
+
         function renderLogsTable() {
             const tbody = document.getElementById('logsTableBody');
             tbody.innerHTML = '';
@@ -1137,7 +1156,7 @@
             document.getElementById('logCountBadge').innerText = `${filtered.length} of ${attendanceLogs.length} records`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center text-slate-400">No attendance records match these filters.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="py-6 text-center text-slate-400">No attendance records match these filters.</td></tr>`;
                 return;
             }
 
@@ -1151,6 +1170,7 @@
                     <td class="py-3 px-3 font-mono text-slate-500">${escapeHtml(log.timestamp)}</td>
                     <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(log.empName)} <span class="text-xs font-normal text-slate-400">(${escapeHtml(log.empId)})</span></td>
                     <td class="py-3 px-3 font-semibold text-brand-700">${escapeHtml(log.type)}</td>
+                    <td class="py-3 px-3 font-bold text-rose-600">${escapeHtml(getNightShiftVariance(log))}</td>
                     <td class="py-3 px-3 font-mono">${log.distance ? log.distance + 'm' : 'N/A'}</td>
                     <td class="py-3 px-3 font-mono">${log.accuracy ? `±${Math.round(log.accuracy)}m` : 'N/A'}</td>
                     <td class="py-3 px-3">${gpsBadge}</td>
@@ -1182,8 +1202,8 @@
                 return;
             }
             const quoteCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Note'];
-            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, log.note]);
+            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Night Shift Variance', 'Note'];
+            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, getNightShiftVariance(log), log.note]);
             const csvContent = [headers, ...rows].map(row => row.map(quoteCsv).join(',')).join('\n');
             const encodedUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
             const link = document.createElement("a");
