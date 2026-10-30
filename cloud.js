@@ -9,6 +9,7 @@
         logRefreshTimer: null,
         locationRulesAvailable: false,
         employeeLocationFieldsAvailable: false,
+        employeeShiftFieldsAvailable: false,
         photoCaptureAvailable: false,
         allowedIpsAvailable: false
     };
@@ -62,6 +63,14 @@
         });
     }
 
+    function setEmployeeShiftAvailability(available) {
+        state.employeeShiftFieldsAvailable = available;
+        const warning = document.getElementById('employeeShiftSetupWarning');
+        if (warning) warning.classList.toggle('hidden', available);
+        const control = document.getElementById('dirEmpShift');
+        if (control) control.disabled = !available;
+    }
+
     function mapLog(row) {
         return {
             id: row.id,
@@ -70,6 +79,7 @@
             empId: row.emp_id,
             empName: row.emp_name,
             empDept: row.emp_dept,
+            shift: row.shift || 'Night',
             type: row.type,
             lat: row.lat,
             lng: row.lng,
@@ -167,10 +177,12 @@
     async function loadSharedData() {
         const locationFieldsResult = await state.client.from('employees').select('location_lat, location_lng').limit(1);
         setEmployeeLocationAvailability(!locationFieldsResult.error);
-        const employeeColumns = state.employeeLocationFieldsAvailable
-            ? 'id, name, dept, type, status, location_lat, location_lng'
-            : 'id, name, dept, type, status';
-        const employeeResult = await state.client.from('employees').select(employeeColumns).order('name');
+        const shiftFieldsResult = await state.client.from('employees').select('shift').limit(1);
+        setEmployeeShiftAvailability(!shiftFieldsResult.error);
+        const employeeColumns = ['id', 'name', 'dept', 'type', 'status'];
+        if (state.employeeLocationFieldsAvailable) employeeColumns.push('location_lat', 'location_lng');
+        if (state.employeeShiftFieldsAvailable) employeeColumns.push('shift');
+        const employeeResult = await state.client.from('employees').select(employeeColumns.join(', ')).order('name');
         if (employeeResult.error) throw employeeResult.error;
         const photoSchemaResult = await state.client.from('attendance_logs')
             .select('face_photo_data, face_photo_expires_at').limit(1);
@@ -178,7 +190,7 @@
         document.getElementById('photoCaptureSetupWarning').classList.toggle('hidden', state.photoCaptureAvailable);
         document.getElementById('photoConsentBlock').classList.toggle('hidden', !state.photoCaptureAvailable);
         document.getElementById('photoConsent').required = state.photoCaptureAvailable;
-        employeeDirectory = employeeResult.data;
+        employeeDirectory = employeeResult.data.map(employee => ({ ...employee, shift: employee.shift || 'Night' }));
         populateKioskEmployeeSelect();
 
         const employeeSelect = document.getElementById('empSelect');
@@ -266,6 +278,7 @@
         setText('profilePageEmployeeId', state.profile.employee_id);
         setText('profilePageDepartment', employee?.dept);
         setText('profilePageType', employee?.type);
+        setText('profilePageShift', employee?.shift || 'Night');
 
         const isEmployee = state.profile.role === 'employee';
         ['profileEmployeeRow', 'profileDepartmentRow', 'profileTypeRow', 'profileStatusRow']
@@ -295,12 +308,57 @@
         };
     }
 
-    function getNightShiftWorkDate(timestamp, type) {
+    const shiftSchedules = {
+        Morning: { start: 10 * 60, end: 18 * 60 },
+        Noon: { start: 14 * 60, end: 22 * 60 },
+        Night: { start: 22 * 60, end: 6 * 60, overnight: true }
+    };
+
+    function getShiftNameForLog(log) {
+        const employee = employeeDirectory.find(item => item.id === log.empId);
+        const shift = log.shift || employee?.shift || 'Night';
+        return Object.prototype.hasOwnProperty.call(shiftSchedules, shift) ? shift : 'Night';
+    }
+
+    function getShiftDeviationMinutes(log, shiftName = getShiftNameForLog(log)) {
+        const date = new Date(log.createdAt || log.created_at || log.timestamp);
+        if (!Number.isFinite(date.getTime())) return 0;
+        const parts = getDhakaDateParts(date);
+        const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
+        const shift = shiftSchedules[shiftName] || shiftSchedules.Night;
+
+        if (log.type === 'Clock In') {
+            if (shift.overnight) {
+                if (minuteOfDay >= shift.start) return minuteOfDay - shift.start;
+                if (minuteOfDay <= shift.end) return (minuteOfDay - shift.start + 24 * 60) % (24 * 60);
+                return 0;
+            }
+            return Math.max(0, minuteOfDay - shift.start);
+        }
+        if (log.type === 'Clock Out') {
+            if (shift.overnight) {
+                if (minuteOfDay < shift.end) return shift.end - minuteOfDay;
+                if (minuteOfDay >= shift.start) return shift.end + 24 * 60 - minuteOfDay;
+                return 0;
+            }
+            return Math.max(0, shift.end - minuteOfDay);
+        }
+        return 0;
+    }
+
+    window.getShiftNameForLog = getShiftNameForLog;
+    window.getShiftDeviationForLog = function(log) {
+        const minutes = getShiftDeviationMinutes(log);
+        if (!minutes) return '';
+        return `${log.type === 'Clock In' ? 'Late' : 'Early'} ${minutes} min`;
+    };
+
+    function getNightShiftWorkDate(timestamp, type, shiftName = 'Night') {
         const parts = getDhakaDateParts(new Date(timestamp));
         const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
-        const belongsToPreviousNight = type === 'Clock In'
-            ? minuteOfDay < 6 * 60
-            : type === 'Clock Out' && minuteOfDay <= 12 * 60;
+        const belongsToPreviousNight = shiftName === 'Night' && (type === 'Clock In'
+            ? minuteOfDay <= 6 * 60
+            : type === 'Clock Out' && minuteOfDay <= 12 * 60);
         const localDate = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day))
             - (belongsToPreviousNight ? 24 * 60 * 60 * 1000 : 0));
         return localDate.toISOString().slice(0, 10);
@@ -361,18 +419,13 @@
         const lateDays = new Set();
         const earlyDays = new Set();
         (rows || []).forEach(row => {
-            const parts = getDhakaDateParts(new Date(row.created_at));
-            const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
-            const workDate = getNightShiftWorkDate(row.created_at, row.type);
+            const shift = row.shift || employee?.shift || 'Night';
+            const workDate = getNightShiftWorkDate(row.created_at, row.type, shift);
             if (!workDate.startsWith(range.monthKey)) return;
             presentDays.add(workDate);
-            if (row.type === 'Clock In' && (minuteOfDay >= 22 * 60 || minuteOfDay <= 6 * 60)) {
-                const minutesLate = (minuteOfDay - 22 * 60 + 24 * 60) % (24 * 60);
-                if (minutesLate > 0) lateDays.add(workDate);
-            }
-            if (row.type === 'Clock Out' && minuteOfDay < 6 * 60 && 6 * 60 - minuteOfDay > 0) {
-                earlyDays.add(workDate);
-            }
+            const deviationMinutes = getShiftDeviationMinutes(row, shift);
+            if (row.type === 'Clock In' && deviationMinutes > 0) lateDays.add(workDate);
+            if (row.type === 'Clock Out' && deviationMinutes > 0) earlyDays.add(workDate);
         });
 
         document.getElementById('profileStatsMonth').textContent = range.label;
@@ -385,7 +438,7 @@
     async function loadEmployeeAttendanceStats() {
         const range = getDhakaMonthRange();
         const { data, error } = await state.client.from('attendance_logs')
-            .select('created_at, type')
+            .select('created_at, type, shift')
             .eq('user_id', state.user.id)
             .gte('created_at', range.start)
             .lt('created_at', range.end)
@@ -422,7 +475,7 @@
             await loadEmployeeAttendanceStats();
         } catch (error) {
             const message = document.getElementById('profileStatsError');
-            message.textContent = 'Your attendance summary is unavailable. Ask your administrator to apply the employee profile attendance migration.';
+            message.textContent = 'Your attendance summary is unavailable. Ask your administrator to apply the employee profile and three-shift migrations.';
             message.classList.remove('hidden');
             console.error(error);
         }
@@ -721,6 +774,7 @@
             type: document.getElementById('dirEmpType').value,
             status: document.getElementById('dirEmpStatus').value
         };
+        if (state.employeeShiftFieldsAvailable) record.shift = document.getElementById('dirEmpShift').value;
         if (state.employeeLocationFieldsAvailable) {
             record.location_lat = location_lat;
             record.location_lng = location_lng;

@@ -337,6 +337,17 @@
                             </div>
                         </div>
 
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1" for="dirEmpShift">Assigned Shift</label>
+                            <p id="employeeShiftSetupWarning" class="hidden mb-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">Run <code>supabase/migrations/20261030000300_three_employee_shifts.sql</code> to enable shift assignments.</p>
+                            <select id="dirEmpShift" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border">
+                                <option value="Morning">Morning (10:00 AM–6:00 PM)</option>
+                                <option value="Noon">Noon (2:00 PM–10:00 PM)</option>
+                                <option value="Night" selected>Night (10:00 PM–6:00 AM)</option>
+                            </select>
+                            <p class="mt-1 text-[11px] text-slate-500">Existing employees keep the Night shift by default; edit an employee to reassign them.</p>
+                        </div>
+
                         <div class="pt-2">
                             <button type="submit" id="dirSaveBtn" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow transition-all flex items-center justify-center space-x-2">
                                 <i class="fa-solid fa-user-plus"></i>
@@ -368,6 +379,7 @@
                                     <th class="py-3 px-3">Department</th>
                                     <th class="py-3 px-3">Assigned Location</th>
                                     <th class="py-3 px-3">Type</th>
+                                    <th class="py-3 px-3">Shift</th>
                                     <th class="py-3 px-3">Status</th>
                                     <th class="py-3 px-3 text-right">Actions</th>
                                 </tr>
@@ -386,7 +398,7 @@
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
                     <h3 class="text-base font-bold text-slate-900">Audit & Verification Logs</h3>
-                    <p class="text-xs text-slate-500">Night shift: 10:00 PM–6:00 AM. Late clock-ins and early clock-outs appear in red. Attendance photos are available to administrators for 20 days after submission.</p>
+                    <p class="text-xs text-slate-500">Morning 10:00 AM–6:00 PM · Noon 2:00 PM–10:00 PM · Night 10:00 PM–6:00 AM. Late clock-ins and early clock-outs appear in red.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <input type="text" id="logSearch" oninput="renderLogsTable()" placeholder="Search employee..." class="rounded-xl border-slate-300 text-xs p-2 border">
@@ -421,7 +433,8 @@
                         <tr>
                             <th class="py-3 px-3"><input id="selectAllVisibleLogs" type="checkbox" onchange="toggleVisibleLogSelection(this.checked)" aria-label="Select all visible attendance logs" class="rounded border-slate-300 text-rose-600 focus:ring-rose-500"></th>
                             <th class="py-3 px-3">Timestamp</th>
-                            <th class="py-3 px-3 whitespace-nowrap">Night Shift (10 PM–6 AM)</th>
+                            <th class="py-3 px-3">Shift</th>
+                            <th class="py-3 px-3 whitespace-nowrap">Shift Deviation</th>
                             <th class="py-3 px-3">Employee</th>
                             <th class="py-3 px-3">Type</th>
                             <th class="py-3 px-3">Geofence Dist</th>
@@ -616,6 +629,7 @@
                 <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-400">Employee ID</dt><dd id="profilePageEmployeeId" class="mt-1 font-bold text-slate-800">—</dd></div>
                 <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-400">Department</dt><dd id="profilePageDepartment" class="mt-1 font-bold text-slate-800">—</dd></div>
                 <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-400">Employment type</dt><dd id="profilePageType" class="mt-1 font-bold text-slate-800">—</dd></div>
+                <div><dt class="text-xs font-semibold uppercase tracking-wide text-slate-400">Assigned shift</dt><dd id="profilePageShift" class="mt-1 font-bold text-slate-800">—</dd></div>
             </dl>
         </section>
 
@@ -625,13 +639,13 @@
                     <h2 class="text-lg font-extrabold text-slate-900">This Month</h2>
                     <p id="profileStatsMonth" class="text-sm text-slate-500">Loading attendance summary…</p>
                 </div>
-                <p class="text-xs text-slate-400">Night shift runs from 10:00 PM to 6:00 AM.</p>
+                <p class="text-xs text-slate-400">Stats follow your assigned shift schedule.</p>
             </div>
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <article class="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
                     <p class="text-xs font-bold uppercase tracking-wider text-emerald-800">Days present</p>
                     <p id="profilePresentDays" class="mt-2 text-4xl font-black text-emerald-700">—</p>
-                    <p class="mt-1 text-xs text-emerald-800/70">Unique night-shift workdays</p>
+                    <p class="mt-1 text-xs text-emerald-800/70">Unique assigned-shift workdays</p>
                 </article>
                 <article class="rounded-2xl border border-rose-100 bg-rose-50 p-5">
                     <p class="text-xs font-bold uppercase tracking-wider text-rose-800">Late clock-in days</p>
@@ -1017,6 +1031,7 @@
                 empId: empObj.id,
                 empName: empObj.name,
                 empDept: empObj.dept,
+                shift: empObj.shift || 'Night',
                 type: checkinType,
                 lat: userState.lat,
                 lng: userState.lng,
@@ -1084,7 +1099,7 @@
             document.getElementById('dirCountBadge').innerText = `${employeeDirectory.length} Total`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">No employees found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center text-slate-400">No employees found.</td></tr>`;
                 return;
             }
 
@@ -1101,6 +1116,7 @@
                     <td class="py-3 px-3">${escapeHtml(emp.dept)}</td>
                     <td class="py-3 px-3">${emp.location_lat != null && emp.location_lng != null ? `${Number(emp.location_lat).toFixed(5)}, ${Number(emp.location_lng).toFixed(5)}` : '<span class="text-slate-400">HQ default</span>'}</td>
                     <td class="py-3 px-3">${escapeHtml(emp.type)}</td>
+                    <td class="py-3 px-3 font-semibold">${escapeHtml(emp.shift || 'Night')}</td>
                     <td class="py-3 px-3">${statusBadge}</td>
                     <td class="py-3 px-3 text-right space-x-2">
                         <button onclick="editEmployeeRecord(${index})" class="text-brand-600 hover:text-brand-800 font-bold text-xs">Edit</button>
@@ -1121,6 +1137,7 @@
             const name = document.getElementById('dirEmpName').value.trim();
             const dept = document.getElementById('dirEmpDept').value.trim() || 'General';
             const type = document.getElementById('dirEmpType').value;
+            const shift = document.getElementById('dirEmpShift').value;
             const status = document.getElementById('dirEmpStatus').value;
             const latValue = document.getElementById('dirEmpLat').value.trim();
             const lngValue = document.getElementById('dirEmpLng').value.trim();
@@ -1136,7 +1153,7 @@
                 return;
             }
 
-            const record = { id, name, dept, type, status, location_lat, location_lng };
+            const record = { id, name, dept, type, shift, status, location_lat, location_lng };
 
             if (editIndex === -1) {
                 if (employeeDirectory.some(e => e.id === id)) {
@@ -1166,6 +1183,7 @@
             document.getElementById('dirEmpName').value = emp.name;
             document.getElementById('dirEmpDept').value = emp.dept;
             document.getElementById('dirEmpType').value = emp.type;
+            document.getElementById('dirEmpShift').value = emp.shift || 'Night';
             document.getElementById('dirEmpStatus').value = emp.status;
             document.getElementById('dirEmpLat').value = emp.location_lat ?? '';
             document.getElementById('dirEmpLng').value = emp.location_lng ?? '';
@@ -1212,24 +1230,6 @@
             });
         }
 
-        function getNightShiftVariance(log) {
-            const timestamp = new Date(log.createdAt || log.timestamp);
-            if (!Number.isFinite(timestamp.getTime())) return '';
-            const minuteOfDay = timestamp.getHours() * 60 + timestamp.getMinutes();
-            if (log.type === 'Clock In') {
-                const startMinute = 22 * 60;
-                // A clock-in after midnight belongs to the overnight shift that began at 10 PM.
-                const minutesLate = (minuteOfDay - startMinute + 24 * 60) % (24 * 60);
-                if (minuteOfDay <= 6 * 60 || minuteOfDay >= startMinute) {
-                    return minutesLate > 0 ? `Late ${minutesLate} min` : '';
-                }
-            } else if (log.type === 'Clock Out' && minuteOfDay < 6 * 60) {
-                const minutesEarly = 6 * 60 - minuteOfDay;
-                return minutesEarly > 0 ? `Early ${minutesEarly} min` : '';
-            }
-            return '';
-        }
-
         function getAttendanceLogSelectionKey(log) {
             if (log.id) return `id:${log.id}`;
             return `local:${attendanceLogs.indexOf(log)}`;
@@ -1272,7 +1272,7 @@
             document.getElementById('logCountBadge').innerText = `${filtered.length} of ${attendanceLogs.length} records`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="10" class="py-6 text-center text-slate-400">No attendance records match these filters.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="11" class="py-6 text-center text-slate-400">No attendance records match these filters.</td></tr>`;
                 updateAttendanceLogSelectionControls(filtered);
                 return;
             }
@@ -1287,7 +1287,8 @@
                 tr.innerHTML = `
                     <td class="py-3 px-3"><input type="checkbox" data-log-key="${escapeHtml(logKey)}" onchange="onAttendanceLogSelectionChange(this)" ${selectedAttendanceLogKeys.has(logKey) ? 'checked' : ''} aria-label="Select attendance record for ${escapeHtml(log.empName)} at ${escapeHtml(log.timestamp)}" class="rounded border-slate-300 text-rose-600 focus:ring-rose-500"></td>
                     <td class="py-3 px-3 font-mono text-slate-500">${escapeHtml(log.timestamp)}</td>
-                    <td class="py-3 px-3 font-bold text-rose-600 whitespace-nowrap">${escapeHtml(getNightShiftVariance(log))}</td>
+                    <td class="py-3 px-3 font-semibold">${escapeHtml(window.getShiftNameForLog(log))}</td>
+                    <td class="py-3 px-3 font-bold text-rose-600 whitespace-nowrap">${escapeHtml(window.getShiftDeviationForLog(log))}</td>
                     <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(log.empName)} <span class="text-xs font-normal text-slate-400">(${escapeHtml(log.empId)})</span></td>
                     <td class="py-3 px-3 font-semibold text-brand-700">${escapeHtml(log.type)}</td>
                     <td class="py-3 px-3 font-mono">${log.distance ? log.distance + 'm' : 'N/A'}</td>
@@ -1338,8 +1339,8 @@
                 return;
             }
             const quoteCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-            const headers = ['Timestamp', 'Night Shift (10 PM–6 AM)', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Note'];
-            const rows = filtered.map(log => [log.timestamp, getNightShiftVariance(log), log.empId, log.empName, log.empDept, log.type, log.note]);
+            const headers = ['Timestamp', 'Shift', 'Shift Deviation', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Note'];
+            const rows = filtered.map(log => [log.timestamp, window.getShiftNameForLog(log), window.getShiftDeviationForLog(log), log.empId, log.empName, log.empDept, log.type, log.note]);
             const csvContent = [headers, ...rows].map(row => row.map(quoteCsv).join(',')).join('\n');
             const encodedUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
             const link = document.createElement("a");
@@ -1391,6 +1392,6 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="./supabase-config.js"></script>
-    <script src="./cloud.js?v=employee-profile-stats-20261030"></script>
+    <script src="./cloud.js?v=multi-shift-20261030"></script>
 </body>
 </html>

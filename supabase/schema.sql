@@ -3,6 +3,7 @@ create table if not exists public.employees (
     name text not null,
     dept text not null default 'General',
     type text not null default 'Full-Time',
+    shift text not null default 'Night' check (shift in ('Morning', 'Noon', 'Night')),
     status text not null default 'Active' check (status in ('Active', 'Inactive')),
     location_lat double precision check (location_lat between -90 and 90),
     location_lng double precision check (location_lng between -180 and 180),
@@ -34,6 +35,7 @@ create table if not exists public.attendance_logs (
     emp_id text not null,
     emp_name text not null,
     emp_dept text not null,
+    shift text not null default 'Night' check (shift in ('Morning', 'Noon', 'Night')),
     type text not null check (type in ('Clock In', 'Clock Out')),
     ip text not null,
     is_ip_valid boolean not null,
@@ -139,8 +141,8 @@ security definer
 set search_path = public
 as $$
 begin
-    select name, dept
-    into new.emp_name, new.emp_dept
+    select name, dept, shift
+    into new.emp_name, new.emp_dept, new.shift
     from public.employees
     where id = new.emp_id and status = 'Active';
 
