@@ -10,5 +10,9 @@ fs.mkdirSync(output, { recursive: true });
 fs.copyFileSync(path.join(root, htmlFile), path.join(output, 'index.html'));
 fs.copyFileSync(path.join(root, 'cloud.js'), path.join(output, 'cloud.js'));
 fs.copyFileSync(path.join(root, 'supabase-config.js'), path.join(output, 'supabase-config.js'));
+const logoDirectory = path.join(root, 'logo');
+if (fs.existsSync(logoDirectory)) {
+  fs.cpSync(logoDirectory, path.join(output, 'logo'), { recursive: true });
+}
 
 console.log(`Static site created at ${output}`);
