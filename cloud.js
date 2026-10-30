@@ -64,6 +64,7 @@
 
     function mapLog(row) {
         return {
+            id: row.id,
             timestamp: new Date(row.created_at).toLocaleString(),
             createdAt: row.created_at,
             empId: row.emp_id,
@@ -749,8 +750,35 @@
             return;
         }
         attendanceLogs = [];
+        selectedAttendanceLogKeys?.clear();
         renderLogsTable();
         showToast('Shared attendance logs cleared.', 'info');
+    };
+
+    window.deleteSelectedAttendanceLogs = async function() {
+        if (state.profile?.role !== 'admin') return;
+        const selectedKeys = [...(selectedAttendanceLogKeys || [])];
+        const ids = selectedKeys
+            .filter(key => key.startsWith('id:'))
+            .map(key => key.slice('id:'.length));
+        if (!ids.length) {
+            showToast('Select one or more attendance records first.', 'error');
+            return;
+        }
+        if (!window.confirm(`Delete only the ${ids.length} selected attendance record(s)? This cannot be undone.`)) return;
+
+        const { data, error } = await state.client.from('attendance_logs')
+            .delete().in('id', ids).select('id');
+        if (error) {
+            showCloudError(error);
+            return;
+        }
+
+        const deletedIds = new Set((data || []).map(row => row.id));
+        attendanceLogs = attendanceLogs.filter(log => !deletedIds.has(log.id));
+        selectedAttendanceLogKeys.clear();
+        renderLogsTable();
+        showToast(`Deleted ${deletedIds.size} selected attendance record(s).`, 'success');
     };
 
     window.loadAdminSettingsIntoUI = function() {
