@@ -165,7 +165,12 @@
     };
 
     async function loadSharedData() {
-        const employeeResult = await state.client.from('employees').select('id, name, dept, type, status').order('name');
+        const locationFieldsResult = await state.client.from('employees').select('location_lat, location_lng').limit(1);
+        setEmployeeLocationAvailability(!locationFieldsResult.error);
+        const employeeColumns = state.employeeLocationFieldsAvailable
+            ? 'id, name, dept, type, status, location_lat, location_lng'
+            : 'id, name, dept, type, status';
+        const employeeResult = await state.client.from('employees').select(employeeColumns).order('name');
         if (employeeResult.error) throw employeeResult.error;
         const photoSchemaResult = await state.client.from('attendance_logs')
             .select('face_photo_data, face_photo_expires_at').limit(1);
@@ -538,13 +543,31 @@
         if (state.profile?.role !== 'admin') return;
 
         const editIndex = parseInt(document.getElementById('directoryEditIndex').value, 10);
+        const id = document.getElementById('dirEmpId').value.trim();
+        const latitudeText = document.getElementById('dirEmpLat').value.trim();
+        const longitudeText = document.getElementById('dirEmpLng').value.trim();
+        if (Boolean(latitudeText) !== Boolean(longitudeText)) {
+            showToast('Enter both employee coordinates, or leave both blank.', 'error');
+            return;
+        }
+        const location_lat = latitudeText === '' ? null : Number(latitudeText);
+        const location_lng = longitudeText === '' ? null : Number(longitudeText);
+        if (location_lat !== null && (!Number.isFinite(location_lat) || location_lat < -90 || location_lat > 90
+            || !Number.isFinite(location_lng) || location_lng < -180 || location_lng > 180)) {
+            showToast('Enter valid employee coordinates.', 'error');
+            return;
+        }
         const record = {
-            id: document.getElementById('dirEmpId').value.trim(),
+            id,
             name: document.getElementById('dirEmpName').value.trim(),
             dept: document.getElementById('dirEmpDept').value.trim() || 'General',
             type: document.getElementById('dirEmpType').value,
             status: document.getElementById('dirEmpStatus').value
         };
+        if (state.employeeLocationFieldsAvailable) {
+            record.location_lat = location_lat;
+            record.location_lng = location_lng;
+        }
         const request = editIndex === -1
             ? state.client.from('employees').insert(record)
             : state.client.from('employees').update(record).eq('id', employeeDirectory[editIndex].id);
@@ -730,15 +753,25 @@
         if (state.profile?.role !== 'admin') return;
         const employee = employeeDirectory[index];
         if (!employee) return;
+        if (!window.confirm(`Permanently delete ${employee.name} (${employee.id})? Their attendance history will remain in Attendance Logs. Any linked employee account will be unassigned.`)) return;
         const { error } = await state.client.from('employees')
-            .update({ status: 'Inactive' }).eq('id', employee.id);
+            .delete().eq('id', employee.id);
         if (error) {
+            if (error.code === '23503') {
+                showToast('Could not delete this employee because the database still links attendance logs to employee records. Apply the new migration to preserve logs and allow permanent deletion.', 'error');
+                return;
+            }
             showCloudError(error);
             return;
         }
-        await loadSharedData();
-        renderDirectoryTable();
-        showToast(`${employee.name} marked inactive.`, 'success');
+        if (Number(document.getElementById('directoryEditIndex').value) === index) resetDirectoryForm();
+        try {
+            await loadSharedData();
+            renderDirectoryTable();
+            showToast(`${employee.name} was permanently deleted. Attendance history was retained.`, 'success');
+        } catch (loadError) {
+            showCloudError(loadError);
+        }
     };
 
     window.clearLogs = async function() {

@@ -293,6 +293,7 @@
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Employee ID <span class="text-rose-500">*</span></label>
                             <input type="text" id="dirEmpId" required placeholder="EMP-1001" class="w-full rounded-xl border-slate-300 text-sm p-2.5 border focus:ring-brand-500 font-mono">
+                            <p id="dirEmpIdEditHelp" class="hidden mt-1 text-[11px] text-slate-500">Employee ID is locked while editing to keep linked accounts and attendance records intact.</p>
                         </div>
 
                         <div>
@@ -352,7 +353,7 @@
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                         <div>
                             <h3 class="text-base font-bold text-slate-900">Employee List</h3>
-                            <p class="text-xs text-slate-500">Active employees can mark attendance</p>
+                            <p class="text-xs text-slate-500">Edit employee details or permanently delete an employee. Historical attendance logs are retained.</p>
                         </div>
                         <div class="flex items-center space-x-2">
                             <input type="text" id="dirSearch" oninput="renderDirectoryTable()" placeholder="Search name/ID..." class="rounded-xl border-slate-300 text-xs p-2 border">
@@ -1019,8 +1020,9 @@
                 return;
             }
 
-            filtered.forEach((emp, index) => {
+            filtered.forEach(emp => {
                 const tr = document.createElement('tr');
+                const index = employeeDirectory.indexOf(emp);
                 const statusBadge = emp.status === 'Active'
                     ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Active</span>'
                     : '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Inactive</span>';
@@ -1034,7 +1036,7 @@
                     <td class="py-3 px-3">${statusBadge}</td>
                     <td class="py-3 px-3 text-right space-x-2">
                         <button onclick="editEmployeeRecord(${index})" class="text-brand-600 hover:text-brand-800 font-bold text-xs">Edit</button>
-                        <button onclick="deleteEmployeeRecord(${index})" class="text-rose-600 hover:text-rose-800 font-bold text-xs">Delete</button>
+                        <button onclick="deleteEmployeeRecord(${index})" class="text-rose-600 hover:text-rose-800 font-bold text-xs">Delete permanently</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -1088,8 +1090,11 @@
 
         function editEmployeeRecord(index) {
             const emp = employeeDirectory[index];
+            if (!emp) return;
             document.getElementById('directoryEditIndex').value = index;
             document.getElementById('dirEmpId').value = emp.id;
+            document.getElementById('dirEmpId').readOnly = true;
+            document.getElementById('dirEmpIdEditHelp').classList.remove('hidden');
             document.getElementById('dirEmpName').value = emp.name;
             document.getElementById('dirEmpDept').value = emp.dept;
             document.getElementById('dirEmpType').value = emp.type;
@@ -1105,6 +1110,8 @@
         function resetDirectoryForm() {
             document.getElementById('directoryEditIndex').value = "-1";
             document.getElementById('directoryForm').reset();
+            document.getElementById('dirEmpId').readOnly = false;
+            document.getElementById('dirEmpIdEditHelp').classList.add('hidden');
             document.getElementById('directoryFormTitle').innerText = "Add New Employee";
             document.getElementById('dirSaveBtn').innerHTML = `<i class="fa-solid fa-user-plus"></i> <span>Save Employee Record</span>`;
             document.getElementById('cancelEditBtn').classList.add('hidden');
@@ -1112,6 +1119,7 @@
 
         function deleteEmployeeRecord(index) {
             const emp = employeeDirectory[index];
+            if (!emp || !window.confirm(`Permanently delete ${emp.name} (${emp.id})?`)) return;
             employeeDirectory.splice(index, 1);
             localStorage.setItem('geoEmployees', JSON.stringify(employeeDirectory));
             showToast(`Deleted ${emp.name}`, "info");

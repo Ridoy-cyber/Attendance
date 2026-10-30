@@ -30,7 +30,8 @@ create table if not exists public.app_settings (
 create table if not exists public.attendance_logs (
     id uuid primary key default gen_random_uuid(),
     user_id uuid not null references auth.users(id),
-    emp_id text not null references public.employees(id),
+    -- Keep employee ID as an attendance-time snapshot so employee records can be deleted without erasing history.
+    emp_id text not null,
     emp_name text not null,
     emp_dept text not null,
     type text not null check (type in ('Clock In', 'Clock Out')),
