@@ -387,7 +387,7 @@
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
                     <h3 class="text-base font-bold text-slate-900">Audit & Verification Logs</h3>
-                    <p class="text-xs text-slate-500">Attendance photos are available to administrators for 20 days after submission.</p>
+                    <p class="text-xs text-slate-500">Night shift: 10:00 PM–6:00 AM. Late clock-ins and early clock-outs appear in red. Attendance photos are available to administrators for 20 days after submission.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <input type="text" id="logSearch" oninput="renderLogsTable()" placeholder="Search employee..." class="rounded-xl border-slate-300 text-xs p-2 border">
@@ -418,9 +418,9 @@
                     <thead class="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-y border-slate-200">
                         <tr>
                             <th class="py-3 px-3">Timestamp</th>
+                            <th class="py-3 px-3 whitespace-nowrap">Night Shift (10 PM–6 AM)</th>
                             <th class="py-3 px-3">Employee</th>
                             <th class="py-3 px-3">Type</th>
-                            <th class="py-3 px-3">Night Shift Variance</th>
                             <th class="py-3 px-3">Geofence Dist</th>
                             <th class="py-3 px-3">GPS Accuracy</th>
                             <th class="py-3 px-3">GPS Status</th>
@@ -1168,9 +1168,9 @@
 
                 tr.innerHTML = `
                     <td class="py-3 px-3 font-mono text-slate-500">${escapeHtml(log.timestamp)}</td>
+                    <td class="py-3 px-3 font-bold text-rose-600 whitespace-nowrap">${escapeHtml(getNightShiftVariance(log))}</td>
                     <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(log.empName)} <span class="text-xs font-normal text-slate-400">(${escapeHtml(log.empId)})</span></td>
                     <td class="py-3 px-3 font-semibold text-brand-700">${escapeHtml(log.type)}</td>
-                    <td class="py-3 px-3 font-bold text-rose-600">${escapeHtml(getNightShiftVariance(log))}</td>
                     <td class="py-3 px-3 font-mono">${log.distance ? log.distance + 'm' : 'N/A'}</td>
                     <td class="py-3 px-3 font-mono">${log.accuracy ? `±${Math.round(log.accuracy)}m` : 'N/A'}</td>
                     <td class="py-3 px-3">${gpsBadge}</td>
@@ -1202,8 +1202,8 @@
                 return;
             }
             const quoteCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-            const headers = ['Timestamp', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Night Shift Variance', 'Note'];
-            const rows = filtered.map(log => [log.timestamp, log.empId, log.empName, log.empDept, log.type, getNightShiftVariance(log), log.note]);
+            const headers = ['Timestamp', 'Night Shift (10 PM–6 AM)', 'Employee ID', 'Employee Name', 'Department', 'Entry Type', 'Note'];
+            const rows = filtered.map(log => [log.timestamp, getNightShiftVariance(log), log.empId, log.empName, log.empDept, log.type, log.note]);
             const csvContent = [headers, ...rows].map(row => row.map(quoteCsv).join(',')).join('\n');
             const encodedUri = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
             const link = document.createElement("a");
